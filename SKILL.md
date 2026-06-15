@@ -28,7 +28,7 @@ prerequisites:
   2. resample → 5-min свечи
   3. Kronos-mini.predict(pred_len=100) → forecast ~500 мин
   4. Сравнить forecast close с текущей ценой → BUY/SELL/HOLD
-  5. Вывод в чат + лог D:\kronos-signal\log.txt
+  5. Вывод в чат + лог C:\kronos-signal\log.txt
 ```
 
 ## Настройка
@@ -42,11 +42,12 @@ pip install requests pyyaml einops safetensors huggingface_hub
 ### 2. Структура
 
 ```
-D:\kronos-signal\
+C:\kronos-signal\
 ├── config.yaml              # тикеры, пороги, модель
 ├── log.txt                  # лог сигналов
 ├── kronos-source/           # клон репозитория Kronos
 │   └── model/
+├── kronos-signal.ico        # иконка ярлыка
 └── scripts/
     └── run.py               # entry point
 ```
@@ -54,7 +55,7 @@ D:\kronos-signal\
 ### 3. Запуск вручную
 
 ```bash
-cd D:/kronos-signal && python scripts/run.py
+cd C:\kronos-signal && .venv\Scripts\python scripts\run.py
 ```
 
 ### 4. Cronjob (раз в час)
@@ -65,7 +66,7 @@ hermes cron every 1h --name kronos-signal --skills kronos-signal
 
 ## Config
 
-См. `D:\kronos-signal\config.yaml`:
+См. `C:\kronos-signal\config.yaml`:
 
 ```yaml
 tickers:

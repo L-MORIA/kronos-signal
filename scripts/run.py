@@ -41,7 +41,15 @@ PRED_LEN = CFG.get("pred_len", 100)
 THRESHOLD = CFG.get("threshold_pct", 2.0)
 MODEL_NAME = CFG["model_name"]
 TOKENIZER_NAME = CFG["tokenizer_name"]
+# Resolve relative model paths to absolute (based on project root)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if not os.path.isabs(MODEL_NAME):
+    MODEL_NAME = os.path.join(PROJECT_ROOT, MODEL_NAME)
+if not os.path.isabs(TOKENIZER_NAME):
+    TOKENIZER_NAME = os.path.join(PROJECT_ROOT, TOKENIZER_NAME)
 LOG_FILE = CFG["log_file"]
+if not os.path.isabs(LOG_FILE):
+    LOG_FILE = os.path.join(PROJECT_ROOT, LOG_FILE)
 BOARDS = CFG.get("boards", {})
 SAMPLE_COUNT = CFG.get("sample_count", 1)
 TEMPERATURE = CFG.get("temperature", 1.0)
