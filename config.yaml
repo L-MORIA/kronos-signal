@@ -1,0 +1,23 @@
+# Kronos Signal Config
+# MOEX ISS (free, no key)
+
+tickers:
+  - SBERP
+
+interval: 1        # исходные свечи из MOEX ISS: 1 = 1 минута
+resample_to: 5     # агрегируем в 5-минутные свечи
+lookback_candles: 150   # сколько свечей подаём в модель (~7 торговых дней)
+pred_len: 24       # сколько свечей прогнозируем (~2 часа)
+threshold_pct: 2.0 # порог для сигнала BUY/SELL в %
+
+model_name: models/Kronos-mini
+tokenizer_name: models/Kronos-Tokenizer-2k
+
+log_file: D:/kronos-signal/log.txt
+
+boards:
+  SBER: TQBR
+  GAZP: TQBR
+  LKOH: TQBR
+  SBERP: TQBR
+  VTBR: TQBR

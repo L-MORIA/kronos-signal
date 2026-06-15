@@ -1,0 +1,14 @@
+# Основные зависимости
+numpy>=1.24.0
+pandas>=2.0.0
+requests>=2.28.0
+pyyaml>=6.0
+einops>=0.6.0
+safetensors>=0.4.0
+huggingface_hub>=0.20.0
+
+# Torch CPU (без CUDA)
+torch>=2.0.0
+
+# Опционально
+python-docx>=1.0.0  # конвертация .md → .docx

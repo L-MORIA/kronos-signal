@@ -1,0 +1,25 @@
+# Kronos Signal — Hourly config (среднесрочный прогноз)
+# 1h свечи, 85 дней контекста, Monte Carlo усреднение
+
+tickers:
+  - SBERP
+
+interval: 60        # 1-часовые свечи из MOEX ISS
+resample_to: 60     # без агрегации — уже часовые
+lookback_candles: 500   # ~21 день (контекст mini 2048 — можно больше)
+pred_len: 24        # 24 часа = прогноз на дневную сессию
+threshold_pct: 2.0  # порог сигнала
+
+model_name: models/Kronos-mini
+tokenizer_name: models/Kronos-Tokenizer-2k
+
+# Параметры predict — Monte Carlo + чуть жёстче
+sample_count: 3
+temperature: 0.85
+top_k: 0
+top_p: 0.85
+
+log_file: D:/kronos-signal/log-hourly.txt
+
+boards:
+  SBERP: TQBR

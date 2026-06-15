@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Logs — история торговли, личные данные
+log.txt
+log-hourly.txt
+
+# Model cache on HF Hub
+~/.cache/huggingface/
+
+# Version tracking (дата последнего обновления модели)
+.version
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Environment — API ключи
+.env
+.env.*
+*.key
+*.pem
+credentials*
+
+# GitHub
+.git/

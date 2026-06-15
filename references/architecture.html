@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Kronos Signal — Архитектура</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #020617; font-family: 'JetBrains Mono', monospace; color: #e2e8f0; padding: 40px; }
+h1 { font-size: 24px; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 12px; }
+h1 .dot { width: 10px; height: 10px; border-radius: 50%; background: #34d399; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+.sub { color: #64748b; font-size: 13px; margin-bottom: 30px; }
+.card { background: #0f172a; border: 1px solid #1e293b; border-radius: 12px; padding: 24px 28px; margin-top: 24px; }
+.card h3 { color: #34d399; font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+.card ul { list-style: none; font-size: 12px; line-height: 1.8; color: #94a3b8; }
+.card ul li::before { content: "▸ "; color: #34d399; }
+.footer { text-align: center; font-size: 10px; color: #475569; margin-top: 30px; }
+svg { width: 100%; max-height: 900px; }
+</style>
+</head>
+<body>
+
+<h1><span class="dot"></span>Kronos Signal — архитектура</h1>
+<div class="sub">Полная схема работы: от двойного клика до прогноза и интерпретации</div>
+
+<svg viewBox="0 0 1100 820" xmlns="http://www.w3.org/2000/svg" style="background:#020617;border:1px solid #1e293b;border-radius:12px;">
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+    </pattern>
+    <marker id="arrow-cyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#22d3ee"/>
+    </marker>
+    <marker id="arrow-emerald" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#34d399"/>
+    </marker>
+    <marker id="arrow-violet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#a78bfa"/>
+    </marker>
+    <marker id="arrow-slate" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
+    </marker>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="1100" height="820" fill="url(#grid)"/>
+
+  <!-- ============ Boundary: Desktop User (top) ============ -->
+  <rect x="30" y="20" width="1040" height="100" rx="8" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="6,3" opacity="0.5"/>
+  <text x="45" y="42" font-size="9" fill="#94a3b8">ПОЛЬЗОВАТЕЛЬ (рабочий стол Windows)</text>
+
+  <!-- Desktop icon -->
+  <rect x="60" y="55" width="160" height="50" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="140" y="78" text-anchor="middle" font-size="10" fill="#e2e8f0" font-weight="600">Kronos Signal.lnk</text>
+  <text x="140" y="93" text-anchor="middle" font-size="8" fill="#94a3b8">двойной клик</text>
+
+  <rect x="240" y="55" width="190" height="50" rx="6" fill="rgba(30,41,59,0.5)" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="335" y="78" text-anchor="middle" font-size="10" fill="#fbbf24" font-weight="600">Kronos Signal Hourly.lnk</text>
+  <text x="335" y="93" text-anchor="middle" font-size="8" fill="#94a3b8">двойной клик</text>
+
+  <!-- ============ Arrow: Desktop → launchers ============ -->
+  <line x1="140" y1="105" x2="140" y2="145" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrow-cyan)"/>
+  <line x1="335" y1="105" x2="335" y2="145" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrow-slate)"/>
+
+  <!-- ============ Boundary: D:\kronos-signal ============ -->
+  <rect x="30" y="140" width="640" height="240" rx="8" fill="none" stroke="#22d3ee" stroke-width="1" stroke-dasharray="6,3" opacity="0.4"/>
+  <text x="45" y="162" font-size="9" fill="#22d3ee">D:\kronos-signal\ (диск D) — код и данные</text>
+
+  <!-- launch.bat -->
+  <rect x="60" y="175" width="160" height="44" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+  <text x="140" y="195" text-anchor="middle" font-size="10" fill="#22d3ee">launch.bat</text>
+  <text x="140" y="210" text-anchor="middle" font-size="8" fill="#94a3b8">обёртка .bat → python</text>
+
+  <!-- launch2.bat -->
+  <rect x="60" y="228" width="160" height="44" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+  <text x="140" y="248" text-anchor="middle" font-size="10" fill="#22d3ee">launch2.bat</text>
+  <text x="140" y="263" text-anchor="middle" font-size="8" fill="#94a3b8">обёртка .bat → python</text>
+
+  <!-- desktop_launcher.py -->
+  <rect x="250" y="175" width="190" height="44" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+  <text x="345" y="195" text-anchor="middle" font-size="10" fill="#22d3ee">desktop_launcher.py</text>
+  <text x="345" y="210" text-anchor="middle" font-size="8" fill="#94a3b8">subprocess → run.py</text>
+
+  <!-- desktop_launcher2.py -->
+  <rect x="250" y="228" width="190" height="44" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+  <text x="345" y="248" text-anchor="middle" font-size="10" fill="#22d3ee">desktop_launcher2.py</text>
+  <text x="345" y="263" text-anchor="middle" font-size="8" fill="#94a3b8">subprocess → run.py --config config-hourly</text>
+
+  <!-- config.yaml -->
+  <rect x="470" y="175" width="180" height="44" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="560" y="192" text-anchor="middle" font-size="10" fill="#34d399">config.yaml</text>
+  <text x="560" y="206" text-anchor="middle" font-size="8" fill="#94a3b8">5-min / MC=1 / T=1.0</text>
+
+  <!-- config-hourly.yaml -->
+  <rect x="470" y="228" width="180" height="44" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="560" y="245" text-anchor="middle" font-size="10" fill="#34d399">config-hourly.yaml</text>
+  <text x="560" y="259" text-anchor="middle" font-size="8" fill="#94a3b8">1h / MC=3 / T=0.85</text>
+
+  <!-- Arrows: launcher → configs → run.py -->
+  <line x1="220" y1="197" x2="250" y2="197" stroke="#22d3ee" stroke-width="1" marker-end="url(#arrow-cyan)"/>
+  <line x1="220" y1="250" x2="250" y2="250" stroke="#22d3ee" stroke-width="1" marker-end="url(#arrow-cyan)"/>
+  <line x1="440" y1="197" x2="470" y2="197" stroke="#22d3ee" stroke-width="1" marker-end="url(#arrow-cyan)"/>
+  <line x1="440" y1="250" x2="470" y2="250" stroke="#22d3ee" stroke-width="1" marker-end="url(#arrow-cyan)"/>
+
+  <!-- Arrow: configs → run.py -->
+  <line x1="560" y1="219" x2="560" y2="285" stroke="#34d399" stroke-width="1" marker-end="url(#arrow-emerald)"/>
+  <line x1="560" y1="272" x2="560" y2="285" stroke="#34d399" stroke-width="1" marker-end="url(#arrow-emerald)"/>
+
+  <!-- run.py -->
+  <rect x="440" y="285" width="240" height="50" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5" filter="url(#glow)"/>
+  <text x="560" y="308" text-anchor="middle" font-size="11" fill="#34d399" font-weight="600">scripts/run.py</text>
+  <text x="560" y="323" text-anchor="middle" font-size="8" fill="#94a3b8">--config config.yaml (по умолчанию)</text>
+
+  <!-- kstep: Pipeline boxes inside run.py -->
+  <text x="45" y="360" font-size="9" fill="#22d3ee">Конвейер внутри run.py:</text>
+
+  <rect x="60" y="370" width="130" height="36" rx="6" fill="rgba(8,51,68,0.3)" stroke="#22d3ee" stroke-width="1"/>
+  <text x="125" y="386" text-anchor="middle" font-size="9" fill="#22d3ee">1. fetch_moex()</text>
+  <text x="125" y="398" text-anchor="middle" font-size="7" fill="#64748b">MOEX ISS → 1min свечи</text>
+
+  <text x="205" y="392" font-size="14" fill="#475569">→</text>
+
+  <rect x="220" y="370" width="130" height="36" rx="6" fill="rgba(8,51,68,0.3)" stroke="#22d3ee" stroke-width="1"/>
+  <text x="285" y="386" text-anchor="middle" font-size="9" fill="#22d3ee">2. resample()</text>
+  <text x="285" y="398" text-anchor="middle" font-size="7" fill="#64748b">1min → 5min (или 1h)</text>
+
+  <text x="365" y="392" font-size="14" fill="#475569">→</text>
+
+  <rect x="380" y="370" width="130" height="36" rx="6" fill="rgba(8,51,68,0.3)" stroke="#22d3ee" stroke-width="1"/>
+  <text x="445" y="386" text-anchor="middle" font-size="9" fill="#22d3ee">3. predict()</text>
+  <text x="445" y="398" text-anchor="middle" font-size="7" fill="#64748b">Kronos forecast 24 шага</text>
+
+  <text x="525" y="392" font-size="14" fill="#475569">→</text>
+
+  <rect x="540" y="370" width="110" height="36" rx="6" fill="rgba(8,51,68,0.3)" stroke="#22d3ee" stroke-width="1"/>
+  <text x="595" y="386" text-anchor="middle" font-size="9" fill="#22d3ee">4. signal()</text>
+  <text x="595" y="398" text-anchor="middle" font-size="7" fill="#64748b">BUY/SELL/HOLD</text>
+
+  <!-- ============ External Services (right side) ============ -->
+  <rect x="720" y="140" width="350" height="240" rx="8" fill="none" stroke="#fbbf24" stroke-width="1" stroke-dasharray="6,3" opacity="0.4"/>
+  <text x="735" y="162" font-size="9" fill="#fbbf24">ВНЕШНИЕ СЕРВИСЫ (интернет)</text>
+
+  <!-- MOEX ISS -->
+  <rect x="740" y="175" width="310" height="60" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="895" y="197" text-anchor="middle" font-size="10" fill="#fbbf24">MOEX ISS API</text>
+  <text x="895" y="212" text-anchor="middle" font-size="8" fill="#94a3b8">iss.moex.com — свечи: from + till, limit=500</text>
+  <text x="895" y="225" text-anchor="middle" font-size="8" fill="#94a3b8">бесплатно, без регистрации, нет лимитов</text>
+
+  <!-- HuggingFace Hub -->
+  <rect x="740" y="250" width="310" height="60" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="895" y="272" text-anchor="middle" font-size="10" fill="#fbbf24">HuggingFace Hub</text>
+  <text x="895" y="287" text-anchor="middle" font-size="8" fill="#94a3b8">NeoQuasar/Kronos-mini — 4M params, MIT</text>
+  <text x="895" y="300" text-anchor="middle" font-size="8" fill="#94a3b8">только для update_models</text>
+
+  <!-- Arrow: run.py → MOEX -->
+  <path d="M 680 320 Q 720 320 740 205" fill="none" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrow-slate)" stroke-dasharray="3,2"/>
+  <text x="695" y="270" font-size="7" fill="#fbbf24">requests.get()</text>
+
+  <!-- ============ Boundary: C:\kronos-models ============ -->
+  <rect x="30" y="420" width="640" height="130" rx="8" fill="none" stroke="#a78bfa" stroke-width="1" stroke-dasharray="6,3" opacity="0.4"/>
+  <text x="45" y="442" font-size="9" fill="#a78bfa">C:\kronos-models\ (диск C) — локальные модели, быстрее D:</text>
+
+  <rect x="60" y="455" width="190" height="50" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="155" y="478" text-anchor="middle" font-size="10" fill="#a78bfa">Kronos-mini</text>
+  <text x="155" y="493" text-anchor="middle" font-size="8" fill="#94a3b8">4M парам., 16 MB, snapshot Sep 2025</text>
+
+  <rect x="270" y="455" width="200" height="50" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="370" y="478" text-anchor="middle" font-size="10" fill="#a78bfa">Kronos-Tokenizer-2k</text>
+  <text x="370" y="493" text-anchor="middle" font-size="8" fill="#94a3b8">BSQ tokenizer, 15 MB</text>
+
+  <!-- update_models -->
+  <rect x="490" y="455" width="160" height="50" rx="6" fill="rgba(30,41,59,0.4)" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="570" y="475" text-anchor="middle" font-size="10" fill="#94a3b8">update_models.bat</text>
+  <text x="570" y="490" text-anchor="middle" font-size="8" fill="#64748b">проверка + скачивание</text>
+
+  <!-- Arrow: update → HF Hub -->
+  <path d="M 570 505 Q 720 520 895 310" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="3,2" marker-end="url(#arrow-slate)"/>
+  <text x="710" y="450" font-size="7" fill="#94a3b8">requests.get() — только при запуске .bat</text>
+
+  <!-- Arrow: run.py → models (local disk) -->
+  <path d="M 560 335 Q 560 400 370 455" fill="none" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow-violet)"/>
+  <text x="480" y="425" font-size="7" fill="#a78bfa">from_pretrained(local path)</text>
+
+  <!-- ============ Outputs ============ -->
+  <rect x="30" y="580" width="1040" height="100" rx="8" fill="none" stroke="#34d399" stroke-width="1" stroke-dasharray="6,3" opacity="0.4"/>
+  <text x="45" y="602" font-size="9" fill="#34d399">РЕЗУЛЬТАТЫ</text>
+
+  <!-- stdout -->
+  <rect x="60" y="615" width="300" height="50" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="210" y="635" text-anchor="middle" font-size="10" fill="#34d399">stdout — консоль / ярлык</text>
+  <text x="210" y="652" text-anchor="middle" font-size="8" fill="#94a3b8">таблица + interpret() разбор</text>
+
+  <!-- log.txt -->
+  <rect x="390" y="615" width="300" height="50" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="540" y="635" text-anchor="middle" font-size="10" fill="#34d399">log.txt / log-hourly.txt</text>
+  <text x="540" y="652" text-anchor="middle" font-size="8" fill="#94a3b8">история всех запусков, дописывается</text>
+
+  <!-- trader-guide.md -->
+  <rect x="720" y="615" width="330" height="50" rx="6" fill="rgba(76,29,149,0.3)" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="885" y="635" text-anchor="middle" font-size="10" fill="#a78bfa">references/trader-guide.md</text>
+  <text x="885" y="652" text-anchor="middle" font-size="8" fill="#94a3b8">инструкция по интерпретации сигналов</text>
+
+  <!-- Arrow: run.py → outputs -->
+  <line x1="560" y1="420" x2="560" y2="580" stroke="#34d399" stroke-width="1" marker-end="url(#arrow-emerald)"/>
+
+  <!-- ============ Legend ============ -->
+  <rect x="740" y="710" width="310" height="90" rx="6" fill="#0f172a" stroke="#1e293b" stroke-width="1"/>
+  <text x="895" y="725" text-anchor="middle" font-size="10" fill="#e2e8f0" font-weight="600">Условные обозначения</text>
+  <rect x="755" y="735" width="12" height="12" rx="2" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1"/>
+  <text x="775" y="745" font-size="9" fill="#94a3b8">код, скрипты</text>
+  <rect x="880" y="735" width="12" height="12" rx="2" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1"/>
+  <text x="900" y="745" font-size="9" fill="#94a3b8">внешние сервисы</text>
+  <rect x="755" y="755" width="12" height="12" rx="2" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1"/>
+  <text x="775" y="765" font-size="9" fill="#94a3b8">локальные модели</text>
+  <rect x="880" y="755" width="12" height="12" rx="2" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1"/>
+  <text x="900" y="765" font-size="9" fill="#94a3b8">данные / результаты</text>
+
+  <text x="350" y="740" font-size="9" fill="#475569" text-anchor="middle">Стрелки: поток данных | Пунктир: границы компонентов</text>
+</svg>
+
+<!-- Инфокарты -->
+<div class="card">
+  <h3>🔵 Поток вызова (5-min версия)</h3>
+  <ul>
+    <li>Двойной клик → <b>Kronos Signal.lnk</b> → launch.bat → desktop_launcher.py → subprocess(run.py)</li>
+    <li>run.py читает <b>config.yaml</b> (SBERP, 1min→5min, sample_count=1, T=1.0, pred_len=24)</li>
+    <li>fetch_moex(): 2 запроса к MOEX ISS (вчера + сегодня), from+till, 1-мин свечи, ~1 сек</li>
+    <li>resample(): pandas → 5-мин OHLCV. fill_gaps: last-price-ffill, ~0.1 сек</li>
+    <li>KronosPredictor.predict(): 24 авторегрессивных шага, ~4 сек/шаг = ~98 сек</li>
+    <li>signal() + interpret(): сравнение forecast vs last close, порог 2%, текстовый разбор</li>
+    <li>Результат: stdout + log.txt</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h3>🟠 Поток вызова (Hourly версия)</h3>
+  <ul>
+    <li>Двойной клик → <b>Kronos Signal Hourly.lnk</b> → launch2.bat → desktop_launcher2.py → subprocess(run.py --config config-hourly.yaml)</li>
+    <li>run.py читает <b>config-hourly.yaml</b> (SBERP, 1h→1h, sample_count=3, T=0.85, top_p=0.85)</li>
+    <li>fetch_moex(): 1 запрос к MOEX ISS, 1-часовые свечи, 500 шт. = 14+ дней истории</li>
+    <li>predict(): 24 шага × 3 Monte Carlo = ~4 мин</li>
+    <li>MC усреднение сглаживает шум, T=0.85 делает прогноз чуть жёстче</li>
+    <li>Результат: stdout + log-hourly.txt</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h3>📦 Где что лежит</h3>
+  <ul>
+    <li><b>C:\kronos-models\</b> — Kronos-mini (16 MB) + Tokenizer-2k (15 MB). Только диск, не интернет</li>
+    <li><b>D:\kronos-signal\</b> — configs, scripts, venv, logs, kronos-source</li>
+    <li><b>update_models.bat</b> — проверка обновлений на HuggingFace Hub. Запускать руками когда угодно</li>
+    <li>При каждом запуске run.py — <b>интернет НЕ нужен</b>. Модель локальная. fetch_moex() только при старте</li>
+  </ul>
+</div>
+
+<div class="footer">Kronos Signal — архитектура · июнь 2026 · SBERP · Hermes Agent</div>
+</body>
+</html>
