@@ -10,8 +10,8 @@ import requests
 import hashlib
 from pathlib import Path
 
-MODELS_DIR = Path("D:/kronos-signal/models").resolve()
-VERSION_FILE = Path("D:/kronos-signal/.version")
+MODELS_DIR = Path("C:/kronos-signal/models").resolve()
+VERSION_FILE = Path("C:/kronos-signal/.version")
 
 REPOS = {
     "Kronos-mini": "NeoQuasar/Kronos-mini",

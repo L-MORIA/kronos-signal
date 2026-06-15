@@ -1,5 +1,5 @@
 """Конвертация trader-guide.md → trader-guide.docx
-Запуск: python D:\kronos-signal\scripts\md_to_docx.py
+Запуск: python C:\kronos-signal\scripts\md_to_docx.py
 """
 import re
 import os
@@ -8,8 +8,8 @@ from docx.shared import Pt, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
 
-MD_PATH = "D:/kronos-signal/references/trader-guide.md"
-DOCX_PATH = "D:/kronos-signal/references/trader-guide.docx"
+MD_PATH = "C:/kronos-signal/references/trader-guide.md"
+DOCX_PATH = "C:/kronos-signal/references/trader-guide.docx"
 
 def add_code_block(doc, text):
     """Код — моноширинный, серый фон (через стиль)."""

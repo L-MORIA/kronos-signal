@@ -18,7 +18,7 @@ warnings.filterwarnings("ignore")
 import argparse
 _parser = argparse.ArgumentParser()
 _parser.add_argument("--config", default="config.yaml",
-                    help="config file name (relative to D:/kronos-signal/)")
+                    help="config file name (relative to project root)")
 _args, _ = _parser.parse_known_args()
 
 # ── Kronos source ─────────────────────────────────────────────────────
