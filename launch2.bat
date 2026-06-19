@@ -1,4 +1,4 @@
 @echo off
 title Kronos Signal (Hourly)
 chcp 65001 >nul
-"C:\kronos-signal\.venv\Scripts\python.exe" "C:\kronos-signal\desktop_launcher2.py"
+"%~dp0.venv\Scripts\python.exe" "%~dp0desktop_launcher2.py"

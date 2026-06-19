@@ -19,7 +19,7 @@ temperature: 0.85
 top_k: 0
 top_p: 0.85
 
-log_file: C:/kronos-signal/log-hourly.txt
+log_file: logs/log.txt
 
 boards:
   SBERP: TQBR

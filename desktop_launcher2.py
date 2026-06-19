@@ -11,24 +11,18 @@ SCRIPT = BASE_DIR / "scripts" / "run.py"
 print("Запуск Kronos Signal (Hourly)...")
 print("(1h свечи, MC=3, контекст ~85 дней)\n")
 
-proc = subprocess.Popen(
-    [str(VENV_PYTHON), str(SCRIPT), "--config", "config-hourly.yaml"],
-    cwd=str(BASE_DIR),
-    stdout=subprocess.PIPE,
-    stderr=subprocess.PIPE,
-    text=True,
-    bufsize=1,
-)
+try:
+    subprocess.run(
+        [str(VENV_PYTHON), str(SCRIPT), "--config", "config-hourly.yaml"],
+        cwd=str(BASE_DIR),
+        check=True,
+    )
+except subprocess.CalledProcessError as e:
+    print(f"\nОшибка: {e}", file=sys.stderr)
+except FileNotFoundError as e:
+    print(f"\nОшибка: {e}", file=sys.stderr)
+    print("Запустите установку: cd kronos-signal && uv venv .venv && uv pip install -r requirements.txt")
 
-# Live stdout
-for line in iter(proc.stdout.readline, ""):
-    print(line, end="", flush=True)
-
-# Live stderr
-for line in iter(proc.stderr.readline, ""):
-    print(line, end="", flush=True, file=sys.stderr)
-
-proc.wait()
-
-print("\nГотово! Результат записан в log-hourly.txt")
-input("\nНажми Enter для закрытия...")
+print("\nГотово! Результат записан в logs/log.txt")
+print("Нажми Enter для закрытия...", end="", flush=True)
+input()

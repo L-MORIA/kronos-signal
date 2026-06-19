@@ -13,7 +13,7 @@ threshold_pct: 2.0 # порог для сигнала BUY/SELL в %
 model_name: models/Kronos-mini
 tokenizer_name: models/Kronos-Tokenizer-2k
 
-log_file: C:/kronos-signal/log.txt
+log_file: logs/log.txt
 
 boards:
   SBER: TQBR

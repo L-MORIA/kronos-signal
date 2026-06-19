@@ -8,26 +8,17 @@ BASE_DIR = Path(__file__).parent.resolve()
 VENV_PYTHON = BASE_DIR / ".venv" / "Scripts" / "python.exe"
 SCRIPT = BASE_DIR / "scripts" / "run.py"
 
-print("Запуск Kronos Signal...\n")
+try:
+    subprocess.run(
+        [str(VENV_PYTHON), str(SCRIPT)],
+        cwd=str(BASE_DIR),
+        check=True,
+    )
+except subprocess.CalledProcessError as e:
+    print(f"\nОшибка: {e}", file=sys.stderr)
+except FileNotFoundError as e:
+    print(f"\nОшибка: {e}", file=sys.stderr)
+    print("Запустите установку: cd kronos-signal && uv venv .venv && uv pip install -r requirements.txt")
 
-proc = subprocess.Popen(
-    [str(VENV_PYTHON), str(SCRIPT)],
-    cwd=str(BASE_DIR),
-    stdout=subprocess.PIPE,
-    stderr=subprocess.PIPE,
-    text=True,
-    bufsize=1,
-)
-
-# Live stdout
-for line in iter(proc.stdout.readline, ""):
-    print(line, end="", flush=True)
-
-# Live stderr
-for line in iter(proc.stderr.readline, ""):
-    print(line, end="", flush=True, file=sys.stderr)
-
-proc.wait()
-
-print("\nГотово! Результат записан в log.txt")
-input("\nНажми Enter для закрытия...")
+print("\nГотово! Нажми Enter для закрытия...", end="", flush=True)
+input()
