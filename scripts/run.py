@@ -51,6 +51,9 @@ LOG_FILE = CFG["log_file"]
 if not os.path.isabs(LOG_FILE):
     LOG_FILE = os.path.join(PROJECT_ROOT, LOG_FILE)
 BOARDS = CFG.get("boards", {})
+RESULTS_DIR = os.path.join(PROJECT_ROOT, "charts")
+os.makedirs(RESULTS_DIR, exist_ok=True)
+MODE_LABEL = "hourly" if "hourly" in _args.config else "5min"
 SAMPLE_COUNT = CFG.get("sample_count", 1)
 TEMPERATURE = CFG.get("temperature", 1.0)
 TOP_K = CFG.get("top_k", 0)
@@ -255,6 +258,35 @@ def interpret(ticker, cur, fcast, signal, chg, up):
 
     return "\n".join(lines)
 
+
+# ── Save full forecast to JSON ─────────────────────────────────────────
+
+def save_forecast(ticker, last_close, pred_df, y_ts_future, mode_label):
+    """Save full forecast series to forecasts/ for later comparison."""
+    forecasts_dir = os.path.join(PROJECT_ROOT, "forecasts")
+    os.makedirs(forecasts_dir, exist_ok=True)
+    ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+    fname = f"{ts}_{mode_label}_{ticker}.json"
+    pred_times = [str(t) for t in y_ts_future[:len(pred_df)]] if y_ts_future is not None else []
+    data = {
+        "run_id": ts, "mode": mode_label, "ticker": ticker,
+        "last_close": float(last_close),
+        "forecast_close": float(pred_df["close"].mean()),
+        "pred_len": len(pred_df),
+        "pred_prices": [float(v) for v in pred_df["close"]],
+        "pred_high": [float(v) for v in pred_df["high"]],
+        "pred_low": [float(v) for v in pred_df["low"]],
+        "pred_timestamps": pred_times,
+        "signal": str(compute_signal(float(pred_df["close"].mean()), float(last_close), THRESHOLD)[0]),
+        "config": {"interval": INTERVAL_SRC, "resample_to": RESAMPLE_TO,
+                   "pred_len": PRED_LEN, "threshold": THRESHOLD,
+                   "sample_count": SAMPLE_COUNT, "temperature": TEMPERATURE},
+        "created_at": datetime.datetime.now().isoformat(),
+    }
+    with open(os.path.join(forecasts_dir, fname), "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    print(f"  Forecast saved: forecasts/{fname} ({len(pred_df)} bars)", file=sys.stderr)
+
 # ──── Main ────────────────────────────────────────────────────────────
 
 def main():
@@ -328,6 +360,9 @@ def main():
         # Upside probability: how many forecast candles end above last close
         up_count = int((pred_df["close"] > last_close).sum())
         up_prob = float(up_count / len(pred_df) * 100)
+
+        # Save full forecast for later comparison
+        save_forecast(ticker, last_close, pred_df, y_ts_future, MODE_LABEL)
 
         results.append((ticker, float(last_close), round(pred_close_avg, 2),
                         signal, round(change_pct, 1), round(up_prob, 0)))

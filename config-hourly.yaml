@@ -3,6 +3,12 @@
 
 tickers:
   - SBERP
+  - FEES
+  - GAZP
+  - VTBR
+  - ROSN
+  - TRNFP
+  - YNDX
 
 interval: 60        # 1-часовые свечи из MOEX ISS
 resample_to: 60     # без агрегации — уже часовые
@@ -23,3 +29,9 @@ log_file: logs/log.txt
 
 boards:
   SBERP: TQBR
+  FEES: TQBR
+  GAZP: TQBR
+  VTBR: TQBR
+  ROSN: TQBR
+  TRNFP: TQBR
+  YNDX: TQBR
