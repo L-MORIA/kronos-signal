@@ -10,6 +10,10 @@ tickers:
   - ROSN
   - TRNFP
   - YDEX
+  - GMKN
+  - SNGSP
+  - MTSS
+  - AFKS
 
 interval: 1        # исходные свечи из MOEX ISS: 1 = 1 минута
 resample_to: 5     # агрегируем в 5-минутные свечи
@@ -33,3 +37,7 @@ boards:
   ROSN: TQBR
   TRNFP: TQBR
   YDEX: TQBR
+  GMKN: TQBR
+  SNGSP: TQBR
+  MTSS: TQBR
+  AFKS: TQBR

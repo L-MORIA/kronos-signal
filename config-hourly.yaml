@@ -8,7 +8,11 @@ tickers:
   - VTBR
   - ROSN
   - TRNFP
-  - YNDX
+  - YDEX
+  - GMKN
+  - SNGSP
+  - MTSS
+  - AFKS
 
 interval: 60        # 1-часовые свечи из MOEX ISS
 resample_to: 60     # без агрегации — уже часовые
@@ -34,4 +38,8 @@ boards:
   VTBR: TQBR
   ROSN: TQBR
   TRNFP: TQBR
-  YNDX: TQBR
+  YDEX: TQBR
+  GMKN: TQBR
+  SNGSP: TQBR
+  MTSS: TQBR
+  AFKS: TQBR
