@@ -233,10 +233,15 @@ def interpret(ticker, cur, fcast, signal, chg, up):
         lines.append(f"  Изменение {chg:+.1f}% - сильное движение (выше порога!)")
 
     # Up
+    horizon_min = PRED_LEN * RESAMPLE_TO  # горизонт прогноза в минутах
+    if horizon_min >= 60 and horizon_min % 60 == 0:
+        horizon_txt = f"{horizon_min // 60}ч"
+    else:
+        horizon_txt = f"{horizon_min}м"
     if up >= 80:
-        lines.append(f"  Уверенность в рост: {up:.0f}% - почти все 2ч цена выше")
+        lines.append(f"  Уверенность в рост: {up:.0f}% - почти все {horizon_txt} цена выше")
     elif up <= 20:
-        lines.append(f"  Уверенность в падение: {up:.0f}% - почти все 2ч цена ниже")
+        lines.append(f"  Уверенность в падение: {up:.0f}% - почти все {horizon_txt} цена ниже")
     else:
         lines.append(f"  Уверенность: {up:.0f}% - рынок не определился")
 
@@ -386,7 +391,7 @@ def main():
         )
     lines.append(sep)
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-    lines.append(f"  Updated: {ts} MSK  |  pred_len={PRED_LEN} ({PRED_LEN*5}min)  |  threshold={THRESHOLD}%")
+    lines.append(f"  Updated: {ts} MSK  |  pred_len={PRED_LEN} ({PRED_LEN*RESAMPLE_TO}min)  |  threshold={THRESHOLD}%")
     lines.append("")
 
     output = "\n".join(lines)
