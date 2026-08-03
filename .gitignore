@@ -18,6 +18,9 @@ log-hourly.txt
 # IDE
 .idea/
 .vscode/
+
+# Generated forecasts (JSON output of run.py)
+forecasts/
 *.swp
 *.swo
 
