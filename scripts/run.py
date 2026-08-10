@@ -19,7 +19,17 @@ import argparse
 _parser = argparse.ArgumentParser()
 _parser.add_argument("--config", default="config.yaml",
                     help="config file name (relative to project root)")
+_parser.add_argument("--chart", action="store_true",
+                    help="draw OHLCV chart + forecast as PNG")
+_parser.add_argument("--chart-dir", default="",
+                    help="output directory for charts (default: project root)")
+_parser.add_argument("--ticker", default="",
+                    help="single ticker to process and chart (overrides config)")
 _args, _ = _parser.parse_known_args()
+
+HAS_CHART = _args.chart
+CHART_DIR = _args.chart_dir
+SINGLE_TICKER = _args.ticker.upper().strip() if _args.ticker else ""
 
 # ── Kronos source ─────────────────────────────────────────────────────
 KRONOS_SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "kronos-source")
@@ -58,6 +68,18 @@ SAMPLE_COUNT = CFG.get("sample_count", 1)
 TEMPERATURE = CFG.get("temperature", 1.0)
 TOP_K = CFG.get("top_k", 0)
 TOP_P = CFG.get("top_p", 0.9)
+
+# Apply --ticker override
+if SINGLE_TICKER:
+    TICKERS = [SINGLE_TICKER]
+
+# Resolve chart output dir
+if HAS_CHART:
+    if CHART_DIR:
+        CHART_DIR = os.path.join(PROJECT_ROOT, CHART_DIR) if not os.path.isabs(CHART_DIR) else CHART_DIR
+    else:
+        CHART_DIR = PROJECT_ROOT
+    os.makedirs(CHART_DIR, exist_ok=True)
 
 MOEX_BASE = "https://iss.moex.com/iss/engines/stock/markets/shares"
 
@@ -200,6 +222,86 @@ def fill_gaps_5min(df_5min):
     df = df.reset_index().rename(columns={"index": "begin"})
     return df
 
+
+# ── Chart (optional) ─────────────────────────────────────────────────
+
+if HAS_CHART:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+
+    def plot_chart(ticker, df_5min, pred_df, save_path):
+        """Draw OHLCV + forecast chart, save as PNG."""
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 7),
+                                        gridspec_kw={"height_ratios": [3, 1]})
+        fig.patch.set_facecolor("#1a1a2e")
+        for ax in [ax1, ax2]:
+            ax.set_facecolor("#16213e")
+
+        times = pd.to_datetime(df_5min["begin"])
+        closes = df_5min["close"].values
+        opens = df_5min["open"].values
+        highs = df_5min["high"].values
+        lows = df_5min["low"].values
+        volumes = df_5min["volume"].values
+
+        # Price line
+        ax1.plot(times, closes, color="#00d2ff", linewidth=1.2, alpha=0.8)
+        ax1.fill_between(times, closes, closes.min(), alpha=0.06, color="#00d2ff")
+
+        # Candlestick bodies (last 60 candles for clarity)
+        viz = max(30, min(60, len(times)))
+        for i in range(max(0, len(times) - viz), len(times)):
+            t = times[i]
+            o, h, l, c = opens[i], highs[i], lows[i], closes[i]
+            color = "#00ff88" if c >= o else "#ff4757"
+            ax1.plot([t, t], [l, h], color=color, linewidth=0.6, alpha=0.5)
+            body_w = pd.Timedelta("2min")
+            ax1.bar(t, abs(c - o) or 0.01, bottom=min(o, c),
+                    width=body_w, color=color, alpha=0.8)
+
+        # Forecast line (if available)
+        if pred_df is not None and len(pred_df) > 0:
+            fcast_times = pd.to_datetime(pred_df.index) if hasattr(pred_df, 'index') else \
+                          pd.date_range(start=times.iloc[-1], periods=len(pred_df)+1, freq="5min")[1:]
+            fcast_close = pred_df["close"].values if "close" in pred_df else pred_df.iloc[:, 3].values
+            ax1.plot(fcast_times, fcast_close, color="#ff6b9d", linewidth=2,
+                     linestyle="--", label="Forecast", alpha=0.9)
+            ax1.fill_between(fcast_times, fcast_close, fcast_close.min(),
+                             alpha=0.1, color="#ff6b9d")
+            # Vertical separator
+            ax1.axvline(x=times.iloc[-1], color="#ff6b9d", linewidth=0.8,
+                        linestyle=":", alpha=0.5)
+
+        # Volume
+        ax2.bar(times, volumes, width=pd.Timedelta("4min"),
+                color="#00d2ff", alpha=0.25)
+
+        # Labels
+        ax1.set_title(f"{ticker}  |  5-min Chart  |  {datetime.date.today()}",
+                      color="white", fontsize=13, pad=12)
+        ax1.set_ylabel("Price (RUB)", color="#8899aa")
+        ax2.set_ylabel("Volume", color="#8899aa")
+        ax1.legend(loc="upper left", facecolor="#1a1a2e", edgecolor="none",
+                   labelcolor="white")
+
+        # Time axis
+        for ax in [ax1, ax2]:
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+            ax.xaxis.set_major_locator(mdates.HourLocator(interval=1))
+            ax.tick_params(colors="#8899aa")
+            ax.grid(True, alpha=0.1, color="white")
+            ax.spines["top"].set_visible(False)
+            ax.spines["right"].set_visible(False)
+            ax.spines["left"].set_color("#333")
+            ax.spines["bottom"].set_color("#333")
+
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=150, bbox_inches="tight", facecolor="#1a1a2e")
+        plt.close(fig)
+        print(f"  🖼 Chart saved: {save_path}", file=sys.stderr)
 
 # ── Interpret signal for trader ──────────────────────────────────────
 
@@ -376,6 +478,11 @@ def main():
               f"last={last_close:.2f} → forecast={pred_close_avg:.2f}, "
               f"signal={signal} ({change_pct:+.1f}%), up={up_prob:.0f}%",
               file=sys.stderr)
+
+        # ── Save chart if --chart is set ──
+        if HAS_CHART:
+            chart_path = os.path.join(CHART_DIR, f"{ticker}-chart.png")
+            plot_chart(ticker, df_5min, pred_df, chart_path)
 
     # ── Output table ────────────────────────────────────────────────
     header = (

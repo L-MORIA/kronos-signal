@@ -39,5 +39,12 @@ credentials*
 # One-time setup helpers
 create_shortcuts.ps1
 
+# Generated charts (--chart flag / chart scripts)
+charts/
+*-chart.png
+*-chart.html
+*-chart-embedded.html
+gallery.html
+
 # GitHub
 .git/

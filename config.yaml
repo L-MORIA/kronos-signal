@@ -2,11 +2,13 @@
 # MOEX ISS (free, no key)
 
 tickers:
+  - SBER
+  - GAZP
+  - LKOH
   - SBERP
+  - VTBR
   - FEES
   - MOEX
-  - GAZP
-  - VTBR
   - ROSN
   - TRNFP
   - YDEX
