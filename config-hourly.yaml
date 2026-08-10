@@ -2,9 +2,12 @@
 # 1h свечи, 85 дней контекста, Monte Carlo усреднение
 
 tickers:
+  - SBER
   - SBERP
   - FEES
+  - MOEX
   - GAZP
+  - LKOH
   - VTBR
   - ROSN
   - TRNFP
@@ -32,9 +35,12 @@ top_p: 0.85
 log_file: logs/log.txt
 
 boards:
+  SBER: TQBR
   SBERP: TQBR
   FEES: TQBR
+  MOEX: TQBR
   GAZP: TQBR
+  LKOH: TQBR
   VTBR: TQBR
   ROSN: TQBR
   TRNFP: TQBR
