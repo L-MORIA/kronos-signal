@@ -398,7 +398,7 @@ def interpret(ticker, cur, fcast, signal, chg, up):
     if up >= 80:
         lines.append(f"  Уверенность в рост: {up:.0f}% - почти все {horizon_txt} цена выше")
     elif up <= 20:
-        lines.append(f"  Уверенность в падение: {up:.0f}% - почти все {horizon_txt} цена ниже")
+        lines.append(f"  Уверенность в падении: {up:.0f}% - почти все {horizon_txt} цена ниже")
     else:
         lines.append(f"  Уверенность: {up:.0f}% - рынок не определился")
 

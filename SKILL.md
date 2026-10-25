@@ -78,9 +78,9 @@ moex_iss.py --output plot candles FEES --interval 1 --days 30
 
 **Интервалы:** 1=1min, 10=10min, 60=1h, 24=1d, 7=1w, 31=1M.
 
-**5-min нет в MOEX ISS.** Использовать interval=1 (1-min) и resample. `scripts/plot.py` делает это автоматически для больших диапазонов.
+**5-min нет в MOEX ISS.** Использовать interval=1 (1-min) и resample. Для графиков `--output plot` автоматически ресемплирует 1-min в 15-min, если свечей >800.
 
-**Лимит 500 свечей на запрос.** Для 1-min это ~1 день. Для месяца — итерация по дням (c 0.3s паузой). `scripts/plot.py` делает это. `moex_iss.py` без `--output plot` — один запрос, 500 свечей.
+**Лимит 500 свечей на запрос.** `moex_iss.py` сам итерирует страницы через параметр `start` (пауза 0.3с), все команды candles получают всю историю за период.
 
 **Выходные:** MOEX закрыт Сб-Вс/праздники. Не показывать пустые строки или нули.
 
@@ -107,7 +107,7 @@ moex_iss.py news SBERP --days 7 --output json
 
 ### rss-news — сбор новостей из внешних RSS-источников
 
-MOEX news даёт только биржевые уведомления. Для аналитики и обзоров используется скрипт `rss_market_news.py` (лежит в `~/.hermes/scripts/rss_market_news.py`):
+MOEX news даёт только биржевые уведомления. Для аналитики и обзоров используется скрипт `rss_market_news.py` в корне репозитория:
 
 **Подключённые RSS-источники:**
 | Источник | URL | Тип контента |
@@ -117,24 +117,23 @@ MOEX news даёт только биржевые уведомления. Для 
 | **ПРАЙМ** | `1prime.ru/export/rss2/index.xml` | Экономика, макростатистика |
 | **Интерфакс** | `interfax.ru/rss` | Деловые новости |
 
-**Фильтрация по тикерам:** автоматически ищет ключевые слова (SBER→сбер/sberbank, GAZP→газпром/gazprom, LKOH→лукойл/lukoil, SBERP→сбер преф/sberp, VTBR→втб/vtb)
+**Фильтрация по тикерам:** автоматически ищет ключевые слова (SBER→сбер/sberbank, GAZP→газпром/gazprom, LKOH→лукойл/lukoil, SBERP→сбер преф/sberp, VTBR→втб/vtb); побеждает самый специфичный паттерн — «сбербанк преф» уходит SBERP, а не SBER.
 
 ```bash
 # Сбор новостей по всем 5 тикерам за 48ч
-python ~/.hermes/scripts/rss_market_news.py --hours 48
+python rss_market_news.py --hours 48
 
 # Только по SBER и GAZP
-python ~/.hermes/scripts/rss_market_news.py --tickers SBER,GAZP
+python rss_market_news.py --tickers SBER,GAZP
 
 # JSON для скриптов
-python ~/.hermes/scripts/rss_market_news.py --json
+python rss_market_news.py --json
 
 # Режим cron: только новые (непросмотренные)
-python ~/.hermes/scripts/rss_market_news.py --hours 24 --cron
+python rss_market_news.py --hours 24 --cron
 ```
 
-**Cron:** настроен `0 9 * * 1-5` — будни в 9:00, сбор + анализ через LLM.
-**Трекер просмотренных:** `~/.hermes/cache/rss-news/seen_urls.txt`
+**Трекер просмотренных:** `news_cache/seen_urls.txt`
 
 ### Прочие команды
 
@@ -172,7 +171,7 @@ moex_iss.py marketdata          # сводка по рынку
 
 ## RSS-мониторинг новостей по тикерам
 
-Скрипт `scripts/rss_market_news.py` собирает новости из 4 RSS-финасовых источников и фильтрует по 5 тикерам (SBER, GAZP, LKOH, SBERP, VTBR).
+Скрипт `rss_market_news.py` (корень репозитория) собирает новости из 4 RSS-финансовых источников и фильтрует по 5 тикерам (SBER, GAZP, LKOH, SBERP, VTBR).
 
 **Источники:**
 
@@ -188,25 +187,22 @@ moex_iss.py marketdata          # сводка по рынку
 **Использование:**
 
 ```bash
-python scripts/rss_market_news.py --hours 48
-python scripts/rss_market_news.py --hours 24 --cron          # только новые
-python scripts/rss_market_news.py --hours 24 --tickers SBER  # по одному тикеру
-python scripts/rss_market_news.py --hours 48 --json          # JSON
+python rss_market_news.py --hours 48
+python rss_market_news.py --hours 24 --cron          # только новые
+python rss_market_news.py --hours 24 --tickers SBER  # по одному тикеру
+python rss_market_news.py --hours 48 --json          # JSON
 ```
-
-**Cron:** создана задача `Новости по 5 фишкам` (будни 9:00):
-- Собирает свежие новости за 24ч → анализирует через LLM → сводка
-- `cronjob action='list'` — просмотр статуса
-- `cronjob action='run' job_id=...` — ручной запуск
 
 **Кэш:** `news_cache/seen_urls.txt` — чтобы не дублировать прочитанные новости.
 
 ## Reference files
 
-- `scripts/moex_api.py` — чистый клиент MOEX ISS (можно импортировать)
-- `scripts/moex_iss.py` — CLI-обёртка (все команды, `--output plot`)
-- `scripts/moex_plot.py` — matplotlib-функция для `--output plot`
-- `scripts/plot.py` — standalone скрипт: 5-min график за месяц (с итерацией по дням)
-- `scripts/rss_market_news.py` — RSS-сборщик новостей по 5 тикерам
-- `references/moex-boards.md` — engine/market/board архитектура MOEX
-- `references/moex-endpoints.md` — API endpoint reference, quirks
+- `scripts/moex_iss.py` — CLI-клиент MOEX ISS (все команды, `--output plot`)
+- `scripts/run.py` — конвейер kronos-signal (fetch→predict→signal)
+- `rss_market_news.py` — RSS-сборщик новостей по 5 тикерам
+
+## Известные ограничения (проверено 2026-10)
+
+- `dividends` — ISS больше не отдаёт блок дивидендов по акциям: команда честно сообщает об отсутствии данных.
+- `orderbook` — вне торговой сессии стакан пуст.
+- `indices` — RTSI/MOEXBC могут отсутствовать на доске SNDX фондового движка; отсутствующие коды молча пропускаются.
