@@ -37,14 +37,16 @@ def pd_timedelta(s):
 
 
 def test_live_hourly_pipeline_end_to_end_shape(run_mod, monkeypatch):
-    """Resample->fill_gaps->future timestamps on real hourly data yield an
-    hourly grid and a true 24h horizon."""
+    """Resample->fill_gaps->future timestamps on real hourly data: steps are
+    whole hours (nights intentionally NOT filled — no fake flat candles) and
+    the forecast horizon is a true 24h."""
     monkeypatch.setattr(run_mod, "INTERVAL_SRC", 60)
     df = run_mod.fetch_multi_day("SBERP", min_candles=600)
     if df is None or len(df) < 100:
         pytest.skip("MOEX returned thin data")
     df_tf = run_mod.fill_gaps(run_mod.resample_ohlcv(df, "60min"), "60min")
     diffs = df_tf["begin"].diff().dropna().unique()
-    assert all(d == pd_timedelta("1h") for d in diffs)
+    assert all(d >= pd_timedelta("1h") and d % pd_timedelta("1h") == pd_timedelta(0)
+               for d in diffs)
     fut = run_mod.generate_future_timestamps(df_tf["begin"].iloc[-1], 24, "60min")
     assert fut.iloc[-1] - fut.iloc[0] == pd_timedelta("23h")
