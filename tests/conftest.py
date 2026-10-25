@@ -8,6 +8,11 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+# kronos-source в sys.path для тестов модели (from model.kronos import ...)
+KRONOS_SRC = PROJECT_ROOT / "kronos-source"
+if str(KRONOS_SRC) not in sys.path:
+    sys.path.insert(0, str(KRONOS_SRC))
+
 
 def _load_module(name, rel_path):
     spec = importlib.util.spec_from_file_location(

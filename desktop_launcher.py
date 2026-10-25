@@ -1,7 +1,6 @@
 """Desktop launcher for Kronos Signal.
 Запускается по двойному клику — показывает прогресс в реальном времени."""
 import subprocess
-import sys
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent.resolve()

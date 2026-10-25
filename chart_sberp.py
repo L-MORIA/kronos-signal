@@ -50,6 +50,11 @@ df5 = df5.resample("5min", closed="left", label="left").agg(ohlc)
 df5 = df5.dropna(subset=["open"])
 print(f"Resampled to {len(df5)} 5-min candles", file=sys.stderr)
 
+if df5.empty:
+    # выходные/праздники: ни сегодня, ни вчера нет свечей — не падаем на пустом df
+    print("No candles for today or yesterday (weekend/holiday). Nothing to plot.", file=sys.stderr)
+    sys.exit(1)
+
 # ── Plot ──
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 7), gridspec_kw={"height_ratios": [3, 1]}, sharex=True)
 fig.patch.set_facecolor("#1a1a2e")

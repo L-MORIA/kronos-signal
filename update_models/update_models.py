@@ -24,7 +24,7 @@ def get_local_version():
         return None
     try:
         return VERSION_FILE.read_text().strip()
-    except:
+    except OSError:
         return None
 
 def save_local_version(date_str):
@@ -32,16 +32,16 @@ def save_local_version(date_str):
     VERSION_FILE.write_text(f"{date_str}\n", encoding="utf-8")
 
 def get_remote_info(repo_id):
-    """Получить lastModified дату модели с HF Hub."""
+    """lastModified и sha коммита модели с HF Hub."""
     url = f"https://huggingface.co/api/models/{repo_id}"
     try:
         r = requests.get(url, timeout=10)
         r.raise_for_status()
         data = r.json()
-        return data.get("lastModified", None)
+        return data.get("lastModified", None), data.get("sha", None)
     except Exception as e:
         print(f"  Ошибка запроса к HF Hub: {e}")
-        return None
+        return None, None
 
 def check_snapshot_integrity(local_dir):
     """Проверить, что в локальной директории есть model.safetensors и config.json."""
@@ -70,6 +70,7 @@ def main():
     print()
 
     updated = False
+    remote_dates = {}
     for folder, repo_id in REPOS.items():
         local_dir = MODELS_DIR / folder
         if not local_dir.exists():
@@ -81,12 +82,13 @@ def main():
             continue
 
         print(f"  {folder} ({repo_id})...")
-        remote_date = get_remote_info(repo_id)
+        remote_date, remote_sha = get_remote_info(repo_id)
         if not remote_date:
-            print(f"    Не удалось получить информацию с HF Hub")
+            print(f"    Не удалось получить информации с HF Hub")
             continue
+        remote_dates[repo_id] = remote_date
 
-        print(f"    Последнее изменение на сервере: {remote_date}")
+        print(f"    Последнее изменение на сервере: {remote_date} (sha {remote_sha[:8] if remote_sha else '?'})")
 
         # Сравнение
         if local_ver and remote_date <= local_ver:
@@ -95,11 +97,11 @@ def main():
             print(f"    → Есть обновление! Скачиваю...")
             from huggingface_hub import snapshot_download
             try:
+                # пиннинг конкретного коммита: качаем ровно ту ревизию, которую проверили
                 snapshot_download(
                     repo_id=repo_id,
                     local_dir=str(local_dir),
-                    local_dir_use_symlinks=False,
-                    resume_download=True,
+                    revision=remote_sha or "main",
                 )
                 print(f"    ✓ Обновлено: {local_dir}")
                 updated = True
@@ -110,12 +112,8 @@ def main():
 
     # Обновить версию, если что-то поменялось
     if updated or not local_ver:
-        # Берём самую свежую дату из удалённых репозиториев
-        dates = []
-        for repo_id in REPOS.values():
-            d = get_remote_info(repo_id)
-            if d:
-                dates.append(d)
+        # Берём самую свежую дату из уже полученных ответов
+        dates = list(remote_dates.values())
         if dates:
             latest = max(dates)
             save_local_version(latest)

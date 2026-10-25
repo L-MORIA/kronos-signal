@@ -344,12 +344,16 @@ def top_k_top_p_filtering(
         Make sure we keep at least min_tokens_to_keep per batch example in the output
     From: https://gist.github.com/thomwolf/1a5a29f6962089e871b94cbd09daf317
     """
+    if top_k is None:
+        top_k = 0
+    if top_p is None:
+        top_p = 1.0
+
     if top_k > 0:
         top_k = min(max(top_k, min_tokens_to_keep), logits.size(-1))  # Safety check
         # Remove all tokens with a probability less than the last token of the top-k
         indices_to_remove = logits < torch.topk(logits, top_k)[0][..., -1, None]
-        logits[indices_to_remove] = filter_value
-        return logits
+        logits = logits.masked_fill(indices_to_remove, filter_value)
 
     if top_p < 1.0:
         sorted_logits, sorted_indices = torch.sort(logits, descending=True)
@@ -366,15 +370,21 @@ def top_k_top_p_filtering(
 
         # scatter sorted tensors to original indexing
         indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
-        logits[indices_to_remove] = filter_value
-        return logits
+        logits = logits.masked_fill(indices_to_remove, filter_value)
+
+    return logits
 
 
 def sample_from_logits(logits, temperature=1.0, top_k=None, top_p=None, sample_logits=True):
+    if temperature <= 0:
+        raise ValueError(f"temperature must be > 0, got {temperature}")
     logits = logits / temperature
-    if top_k is not None or top_p is not None:
-        if top_k > 0 or top_p < 1.0:
-            logits = top_k_top_p_filtering(logits, top_k=top_k, top_p=top_p)
+    if top_k is None:
+        top_k = 0
+    if top_p is None:
+        top_p = 1.0
+    if top_k > 0 or top_p < 1.0:
+        logits = top_k_top_p_filtering(logits, top_k=top_k, top_p=top_p)
 
     probs = F.softmax(logits, dim=-1)
 
@@ -533,6 +543,11 @@ class KronosPredictor:
 
         if df[self.price_cols + [self.vol_col, self.amt_vol]].isnull().values.any():
             raise ValueError("Input DataFrame contains NaN values in price or volume columns.")
+
+        if len(x_timestamp) != len(df):
+            raise ValueError(f"x_timestamp length {len(x_timestamp)} should match DataFrame length {len(df)}.")
+        if len(y_timestamp) != pred_len:
+            raise ValueError(f"y_timestamp length {len(y_timestamp)} should equal pred_len={pred_len}.")
 
         x_time_df = calc_time_stamps(x_timestamp)
         y_time_df = calc_time_stamps(y_timestamp)

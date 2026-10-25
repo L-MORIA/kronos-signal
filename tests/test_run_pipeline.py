@@ -1,5 +1,6 @@
 """Regression tests for the run.py data pipeline (both 5-min and hourly modes)."""
 import datetime
+import json
 import types
 
 import numpy as np
@@ -235,3 +236,83 @@ def test_fetch_multi_day_deduplicates(run_mod, monkeypatch):
     monkeypatch.setattr(run_mod, "requests", types.SimpleNamespace(get=fake_get))
     df = run_mod.fetch_multi_day("SBER", min_candles=50)
     assert len(df) == len(df.drop_duplicates(subset=["begin"]))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Дополнения второго прохода аудита: гэпы ночь/выходные, валидация
+# тикеров, save_forecast, устойчивость fetch к ошибкам сети.
+# ═══════════════════════════════════════════════════════════════════════
+
+def test_fill_gaps_does_not_fill_overnight(run_mod):
+    """Ночь/выходные не заполняются плоскими фейковыми свечами:
+    ранее каждая ночь в hourly-режиме превращалась в ~15 фиктивных свечей."""
+    fri = make_1min_df("2026-01-08 17:00", periods=20, freq="5min")
+    mon = make_1min_df("2026-01-11 10:00", periods=10, freq="5min")
+    mon[["open", "high", "low", "close"]] += 2.0
+    df = pd.concat([fri, mon], ignore_index=True)
+    out = run_mod.fill_gaps(df, "5min", max_gap_bars=3)
+    fri_last = fri["begin"].iloc[-1]
+    tail_allowed = fri_last + pd.Timedelta(minutes=15)  # ≤3 баров хвостом
+    assert (out["begin"] <= fri_last).sum() == 20      # реальные свечи целы
+    assert (out["begin"] >= pd.Timestamp("2026-01-11 10:00")).sum() == 10
+    night = out[(out["begin"] > tail_allowed)
+                & (out["begin"] < pd.Timestamp("2026-01-11 10:00"))]
+    assert len(night) == 0
+    assert len(out) <= len(df) + 6
+
+
+def test_fill_gaps_hourly_night_not_filled(run_mod):
+    """Часовые свечи через ночь: между днями не появляются плоские свечи."""
+    day1 = make_1min_df("2026-01-05 10:00", periods=8, freq="1h")
+    day2 = make_1min_df("2026-01-06 10:00", periods=8, freq="1h")
+    day2[["open", "high", "low", "close"]] += 1.0
+    df = pd.concat([day1, day2], ignore_index=True)
+    out = run_mod.fill_gaps(df, "60min", max_gap_bars=3)
+    night = out[(out["begin"] > pd.Timestamp("2026-01-05 20:00"))
+                & (out["begin"] < pd.Timestamp("2026-01-06 10:00"))]
+    assert len(night) == 0
+    assert len(out) <= len(df) + 2 * 3
+
+
+@pytest.mark.parametrize("ticker,expected", [
+    ("SBERP", True), ("GAZP", True), ("YDEX", True), ("A", True),
+    ("..", False), ("...", False),
+    ("..\evil", False), ("../evil", False), ("../../etc/passwd", False),
+    ("SB ER", False), ("", False),
+    ("VERYLONGTICKER99", False),   # > 12 символов
+    ("SBER;rm -rf", False),
+    ("-SBER", False),              # не начинается с буквы/цифры
+])
+def test_is_valid_ticker(run_mod, ticker, expected):
+    assert run_mod.is_valid_ticker(ticker) is expected
+
+
+def test_save_forecast_writes_json(run_mod, tmp_path, monkeypatch):
+    monkeypatch.setattr(run_mod, "PROJECT_ROOT", str(tmp_path))
+    idx = pd.date_range("2026-01-05 10:05", periods=24, freq="5min")
+    pred_df = pd.DataFrame({
+        "open": 300.0, "high": 301.0, "low": 299.0, "close": 300.5,
+        "volume": 1000.0, "amount": 300500.0,
+    }, index=idx)
+    y_ts = run_mod.generate_future_timestamps(idx[0], 24, "5min")
+    run_mod.save_forecast("SBERP", 299.0, pred_df, y_ts, "5min")
+    files = list((tmp_path / "forecasts").glob("*.json"))
+    assert len(files) == 1
+    data = json.loads(files[0].read_text(encoding="utf-8"))
+    assert data["ticker"] == "SBERP" and data["mode"] == "5min"
+    assert len(data["pred_prices"]) == 24
+    assert data["signal"] in ("BUY", "SELL", "HOLD")
+
+
+def test_fetch_candles_range_empty_page_returns_none(run_mod, monkeypatch):
+    def fake_get(url, params=None, timeout=10):
+        return FakeResponse(make_payload([]))
+    monkeypatch.setattr(run_mod, "requests", types.SimpleNamespace(get=fake_get))
+    assert run_mod.fetch_candles_range("SBER", "2026-10-23", "2026-10-24") is None
+
+
+def test_fetch_candles_range_network_error_returns_none(run_mod, monkeypatch):
+    def fake_get(url, params=None, timeout=10):
+        raise ConnectionError("boom")
+    monkeypatch.setattr(run_mod, "requests", types.SimpleNamespace(get=fake_get))
+    assert run_mod.fetch_candles_range("SBER", "2026-10-23", "2026-10-24") is None

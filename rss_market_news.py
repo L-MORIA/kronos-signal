@@ -9,7 +9,7 @@ Usage:
 """
 import argparse, datetime, json, os, re, sys
 from email.utils import parsedate_to_datetime
-from xml.etree import ElementTree
+from defusedxml import ElementTree
 from urllib.request import Request, urlopen
 
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "news_cache")
@@ -46,7 +46,8 @@ def fetch(url):
         print(f"  ⚠️  {url}: разрешён только https", file=sys.stderr)
         return []
     try:
-        resp = urlopen(Request(url, headers={"User-Agent": "Mozilla/5.0"}), timeout=15)
+        # схема проверена выше, url — из захардкоженного RSS_FEEDS
+        resp = urlopen(Request(url, headers={"User-Agent": "Mozilla/5.0"}), timeout=15)  # nosec B310
         raw = resp.read()
         # Отсекаем DTD/ENTITY — защита от XML-бомб (billion laughs / XXE)
         head = raw[:2048]
@@ -68,11 +69,20 @@ def fetch(url):
         return []
 
 def match(text, tickers):
+    """Вернуть тикер с самым специфичным (длинным) совпавшим паттерном.
+
+    kw — regex-паттерны (например "сбер.?преф"): substring-поиск их убивал,
+    а порядок тикеров решал исход — «сбербанк преф» доставался SBER (его
+    короткое «сбер» проверялось первым). Теперь совпадения ищутся regex'ом
+    и побеждает самый длинный паттерн.
+    """
     t = text.lower()
+    best_ticker, best_len = None, 0
     for ticker in tickers:
         for kw in TICKER_KW.get(ticker, []):
-            if kw in t: return ticker
-    return None
+            if re.search(kw, t) and len(kw) > best_len:
+                best_ticker, best_len = ticker, len(kw)
+    return best_ticker
 
 def parse_dt(s):
     """RFC-822 pubDate -> naive local datetime (datetime.min если не парсится)."""
@@ -93,6 +103,13 @@ def main():
     args = ap.parse_args()
 
     tickers = [t.strip().upper() for t in args.tickers.split(",")]
+    unknown = [t for t in tickers if t not in TICKER_KW]
+    if unknown:
+        print(f"  ⚠️  Нет ключевых слов для тикеров: {', '.join(unknown)} (пропущены)", file=sys.stderr)
+        tickers = [t for t in tickers if t in TICKER_KW]
+    if not tickers:
+        print("Нет известных тикеров для фильтрации.", file=sys.stderr)
+        return
     seen = load_seen()
     new_urls, articles = set(), []
     cutoff = datetime.datetime.now() - datetime.timedelta(hours=args.hours)

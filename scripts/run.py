@@ -92,11 +92,18 @@ MOEX_BASE = "https://iss.moex.com/iss/engines/stock/markets/shares"
 
 # ── Tools ─────────────────────────────────────────────────────────────
 
-_TICKER_RE = re.compile(r"^[A-Za-z0-9.\-]{1,20}$")
+_TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9._-]{0,11}$")
+
+
+def is_valid_ticker(ticker):
+    """Тикер попадает в имена файлов (логи, графики, forecasts/) и в URL —
+    отсекаем path traversal и мусор из CLI/конфига. Первый символ —
+    буква/цифра, чтобы не проходили '..' и скрытые имена."""
+    return bool(_TICKER_RE.match(ticker))
 
 
 def moex_url(ticker):
-    if not _TICKER_RE.match(ticker):
+    if not is_valid_ticker(ticker):
         raise ValueError(f"Invalid ticker: {ticker!r}")
     board = BOARDS.get(ticker, "TQBR")
     return f"{MOEX_BASE}/boards/{board}/securities/{ticker}/candles.json"
@@ -250,14 +257,28 @@ def load_model():
     return predictor
 
 
-def fill_gaps(df_tf, rule):
-    """Fill gaps (non-trading hours) by carrying last close forward."""
+def fill_gaps(df_tf, rule, max_gap_bars=3):
+    """Fill small gaps (lunch/inter-session breaks) by carrying last close forward.
+
+    Гэпы длиннее max_gap_bars (ночи, выходные, праздники) НЕ заполняются:
+    иначе модель получает сотни плоских фейковых свечей (в hourly-режиме
+    каждая ночь превращалась в ~15 фиктивных часовых свечей).
+    """
     if df_tf is None or len(df_tf) < 2:
         return df_tf
     full_range = pd.date_range(
         df_tf["begin"].min(), df_tf["begin"].max(), freq=rule
     )
     df = df_tf.set_index("begin").reindex(full_range)
+    real = df["open"].notna()  # позиции реальных свечей
+    # расстояние (в барах) до предыдущей реальной свечи
+    dist, last_real = [], -(10 ** 9)
+    for i, is_real in enumerate(real):
+        if is_real:
+            last_real = i
+        dist.append(i - last_real)
+    keep = real | pd.Series(dist, index=df.index).le(max_gap_bars)
+    df = df[keep.values]
     # Forward-fill price columns
     for col in ["open", "high", "low", "close"]:
         df[col] = df[col].ffill()
@@ -451,6 +472,12 @@ def main():
     results = []
 
     for ticker in TICKERS:
+        if not is_valid_ticker(ticker):
+            # невалидный тикер не должен ронять весь запуск (moex_url бросает
+            # ValueError) и не должен попадать в имена файлов
+            print(f"  ⚠ {ticker!r}: некорректный тикер, skip", file=sys.stderr)
+            results.append((ticker, 0, 0, "NODATA", 0, 0))
+            continue
         print(f"\n  [{ticker}]", file=sys.stderr)
         print(file=sys.stderr)
 
