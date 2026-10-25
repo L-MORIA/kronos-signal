@@ -358,21 +358,79 @@ def cmd_orderbook(args):
         print(f"{bid_s:>10} {bidsz_s:>10}   |   {ask_s:<10} {asksz_s:<10}")
 
 
+SMARTLAB_DIV_URL = "https://smart-lab.ru/dividends/index/order_by_pay_date_asc/"
+
+
+def parse_smartlab_dividends(html_text):
+    """Таблица дивидендов smart-lab → [{ticker, name, period, amount, yield_pct,
+    registry_date, last_buy_date, pay_date, close_price}].
+
+    Колонки: компания, тикер, период, дивиденд руб, доходность, бейдж,
+    дата закрытия реестра, последний день с дивидендом, дата выплаты, цена.
+    """
+    import html as html_mod
+    import re
+
+    rows = []
+    for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", html_text, re.S | re.I):
+        cells = re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S | re.I)
+        if len(cells) < 9:
+            continue
+        clean = [html_mod.unescape(re.sub(r"<[^>]+>", " ", c)).strip() for c in cells]
+        ticker = clean[1].upper()
+        if not is_valid_ticker(ticker) or not clean[3]:
+            continue
+        try:
+            rows.append({
+                "ticker": ticker, "name": clean[0], "period": clean[2],
+                "amount": float(clean[3].replace(" ", "").replace(",", ".")),
+                "yield_pct": clean[4], "registry_date": clean[6],
+                "last_buy_date": clean[7], "pay_date": clean[8],
+                "close_price": clean[9],
+            })
+        except ValueError:
+            continue
+    return rows
+
+
+def dividends_from_smartlab(ticker):
+    """Объявленные дивиденды с smart-lab.ru — неофициальный источник:
+    ISS больше не отдаёт блок dividends, smart-lab агрегирует объявления эмитентов."""
+    try:
+        r = requests.get(SMARTLAB_DIV_URL, timeout=15,
+                         headers={"User-Agent": "Mozilla/5.0"})
+        r.raise_for_status()
+    except Exception as e:
+        print(f"ошибка запроса smart-lab: {e}", file=sys.stderr)
+        return []
+    return [d for d in parse_smartlab_dividends(r.text) if d["ticker"] == ticker]
+
+
 def cmd_dividends(args):
     ticker = args.ticker.upper()
     if not is_valid_ticker(ticker):
         sys.exit(f"некорректный тикер: {ticker!r}")
-    # ISS больше не отдаёт блок dividends по /securities/{T}/dividends.json;
-    # пробуем статистику, иначе честно сообщаем
-    rows = block(iss_get(
-        f"{ISS}/statistics/engines/stock/markets/shares/dividends.json",
-        {"securities.code": ticker, "limit": 50}), "dividends")
-    if not rows:
-        sys.exit(f"{ticker}: дивиденды недоступны через ISS (нет блока данных)")
-    print(f"{'дата реестра':<12} {'выплата':>10}")
-    for r in rows:
-        print(f"{r.get('REGISTRYCLOSEDDATE') or r.get('REGISTRYCLOSEDATE') or '-':<12} "
-              f"{(r.get('DIVIDENDSUM') or 0):>10.2f}")
+    # ISS раньше отдавал /securities/{T}/dividends.json — пробуем на случай возврата
+    rows = block(iss_get(f"{ISS}/securities/{ticker}/dividends.json",
+                         {"iss.only": "dividends"}), "dividends")
+    if rows:
+        print(f"{'дата реестра':<12} {'выплата':>10}")
+        for r in rows:
+            print(f"{r.get('REGISTRYCLOSEDDATE') or r.get('REGISTRYCLOSEDATE') or '-':<12} "
+                  f"{(r.get('DIVIDENDSUM') or 0):>10.2f}")
+        return
+    # фолбэк: объявления с smart-lab.ru
+    divs = dividends_from_smartlab(ticker)
+    if not divs:
+        sys.exit(f"{ticker}: дивиденды недоступны (ISS не отдаёт блок, "
+                 f"на smart-lab объявлений нет)")
+    print(f"{ticker}: объявленные дивиденды (источник: smart-lab.ru, неофициально)")
+    print(f"{'период':<12} {'руб/акц':>8} {'доходн.':>8} {'реестр':>11} {'выплата':>11}")
+    for d in divs:
+        print(f"{d['period']:<12} {d['amount']:>8.2f} {d['yield_pct']:>8} "
+              f"{d['registry_date']:>11} {d['pay_date']:>11}")
+    total = sum(d["amount"] for d in divs)
+    print(f"\nВсего объявлено: {total:.2f} руб/акц за {len(divs)} выплат(ы)")
 
 
 def cmd_indices(args):

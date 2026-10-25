@@ -14,8 +14,9 @@ def moex():
 
 
 class FakeResponse:
-    def __init__(self, payload):
+    def __init__(self, payload, text=None):
         self._payload = payload
+        self.text = text if text is not None else json.dumps(payload)
 
     def raise_for_status(self):
         pass
@@ -319,3 +320,74 @@ def test_interpret_no_typo_padenie(run_mod):
     text = run_mod.interpret("SBERP", 300.0, 295.0, "HOLD", -1.7, 10)
     assert "Уверенность в падении" in text
     assert "в падение" not in text
+
+
+# ── dividends: ISS-блок удалён, фолбэк на smart-lab ──────────────────
+
+SMARTLAB_HTML = """
+<html><body><table>
+<tr><th>Компания</th><th>Тикер</th><th>Период</th><th>Дивиденд, руб</th>
+<th>Доходность</th><th></th><th>Дата закр. реестра</th><th>Посл. день с див.</th>
+<th>Дата выплаты</th><th>Цена закр.</th></tr>
+<tr><td>ЛУКОЙЛ</td><td>LKOH</td><td>3кв 2026</td><td>535</td><td>8,7%</td><td></td>
+<td>08.12.2026</td><td>09.12.2026</td><td>19.12.2026</td><td>6147</td></tr>
+<tr><td>Сбербанк-п</td><td>SBERP</td><td>2кв 2026</td><td>45,60</td><td>15,2%</td><td></td>
+<td>10.07.2026</td><td>09.07.2026</td><td>25.07.2026</td><td>299</td></tr>
+<tr><td>мусорная строка без ячеек</td></tr>
+<tr><td>Плохая сумма</td><td>XXX</td><td>1кв</td><td>n/a</td><td></td><td></td>
+<td>01.01.2026</td><td>02.01.2026</td><td>03.01.2026</td><td>1</td></tr>
+</table></body></html>
+"""
+
+
+def test_parse_smartlab_dividends(moex):
+    rows = moex.parse_smartlab_dividends(SMARTLAB_HTML)
+    assert {r["ticker"] for r in rows} == {"LKOH", "SBERP"}
+    lkoh = next(r for r in rows if r["ticker"] == "LKOH")
+    assert lkoh["amount"] == 535.0
+    assert lkoh["registry_date"] == "08.12.2026"
+    assert lkoh["pay_date"] == "19.12.2026"
+    sberp = next(r for r in rows if r["ticker"] == "SBERP")
+    assert sberp["amount"] == 45.60  # запятая как десятичный разделитель
+    assert sberp["name"] == "Сбербанк-п"
+
+
+def test_dividends_falls_back_to_smartlab(moex, monkeypatch, capsys):
+    def fake_get(url, params=None, timeout=None, headers=None):
+        if "smart-lab" in url:
+            return FakeResponse(None, text=SMARTLAB_HTML)
+        # ISS отдаёт descriptor без блока dividends
+        return FakeResponse({"description": {"columns": [], "data": []}})
+
+    monkeypatch.setattr(moex.requests, "get", fake_get)
+    moex.main(["dividends", "LKOH"])
+    out = capsys.readouterr().out
+    assert "smart-lab" in out and "535.00" in out and "08.12.2026" in out
+
+
+def test_dividends_no_declared_exits(moex, monkeypatch):
+    def routes(url, params=None, timeout=None, headers=None):
+        if "iss.moex" in url:
+            return FakeResponse({"description": {"columns": [], "data": []}})
+        return FakeResponse(None, text=SMARTLAB_HTML)
+
+    monkeypatch.setattr(moex.requests, "get", routes)
+    with pytest.raises(SystemExit, match="объявлений нет"):
+        moex.main(["dividends", "VTBR"])
+
+
+def test_dividends_uses_iss_block_if_returned(moex, monkeypatch, capsys):
+    """Если MOEX вернёт блок dividends — приоритет у официального ISS."""
+
+    def routes(url, params=None, timeout=None):
+        if url.endswith("/SBER/dividends.json"):
+            return FakeResponse(iss_block("dividends",
+                                          ["registryclosedate", "dividendsum"],
+                                          [["2026-07-10", 45.6]]))
+        raise AssertionError("smart-lab не должен запрашиваться: " + url)
+
+    monkeypatch.setattr(moex.requests, "get", routes)
+    moex.main(["dividends", "SBER"])
+    out = capsys.readouterr().out
+    assert "2026-07-10" in out and "45.60" in out
+    assert "smart-lab" not in out
