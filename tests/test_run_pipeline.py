@@ -238,6 +238,7 @@ def test_fetch_multi_day_deduplicates(run_mod, monkeypatch):
     assert len(df) == len(df.drop_duplicates(subset=["begin"]))
 
 
+
 # ═══════════════════════════════════════════════════════════════════════
 # Дополнения второго прохода аудита: гэпы ночь/выходные, валидация
 # тикеров, save_forecast, устойчивость fetch к ошибкам сети.
@@ -316,3 +317,30 @@ def test_fetch_candles_range_network_error_returns_none(run_mod, monkeypatch):
         raise ConnectionError("boom")
     monkeypatch.setattr(run_mod, "requests", types.SimpleNamespace(get=fake_get))
     assert run_mod.fetch_candles_range("SBER", "2026-10-23", "2026-10-24") is None
+
+
+def test_fetch_multi_day_overlap_does_not_stop_early(run_mod, monkeypatch):
+    """Regression: early-stop counted RAW chunk rows; a 1-day window overlap
+    (or any repeated candles) inflated the count and stopped the scan before
+    min_candles UNIQUE candles were collected."""
+    monkeypatch.setattr(run_mod, "INTERVAL_SRC", 60)
+
+    def fake_get(url, params=None, timeout=10):
+        # server returns the requested window PLUS the day before it,
+        # so consecutive chunks share a day of candles
+        d_from = datetime.date.fromisoformat(params["from"]) - datetime.timedelta(days=1)
+        d_till = datetime.date.fromisoformat(params["till"])
+        rows = []
+        day = d_from
+        while day < d_till:
+            if day.weekday() < 5:
+                for h in range(7, 23):
+                    rows.append(row(f"{day} {h:02d}:00:00"))
+            day += datetime.timedelta(days=1)
+        return FakeResponse(make_payload(rows))
+
+    monkeypatch.setattr(run_mod, "requests", types.SimpleNamespace(get=fake_get))
+    df = run_mod.fetch_multi_day("SBER", min_candles=200)
+    assert df is not None
+    assert len(df) >= 200                      # unique candles, not raw sum
+    assert df["begin"].is_unique

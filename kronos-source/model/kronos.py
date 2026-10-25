@@ -483,7 +483,7 @@ def calc_time_stamps(x_timestamp):
     time_df = pd.DataFrame()
     time_df['minute'] = x_timestamp.dt.minute
     time_df['hour'] = x_timestamp.dt.hour
-    time_df['weekday'] = x_timestamp.dt.weekday
+    time_df['weekday'] = x_timestamp.dt.day_of_week
     time_df['day'] = x_timestamp.dt.day
     time_df['month'] = x_timestamp.dt.month
     return time_df

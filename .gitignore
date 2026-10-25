@@ -5,6 +5,10 @@ __pycache__/
 .venv/
 venv/
 
+# Pytest
+.pytest_tmp/
+.pytest_cache/
+
 # Logs — история торговли, личные данные
 log.txt
 log-hourly.txt

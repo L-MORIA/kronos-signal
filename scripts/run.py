@@ -168,8 +168,10 @@ _CHUNK_DAYS = {1: 1, 10: 2, 60: 7, 24: 60, 7: 400, 31: 1200}
 
 
 def fetch_multi_day(ticker, min_candles=600):
-    """Fetch candles backwards from today until min_candles collected."""
+    """Fetch candles backwards from today until min_candles UNIQUE candles
+    collected (MOEX `till` is an exclusive bound, so chunks are adjacent)."""
     dfs = []
+    seen = set()
     today = datetime.date.today()
     chunk_days = _CHUNK_DAYS.get(INTERVAL_SRC, 1)
     per_day = _CANDLES_PER_DAY.get(INTERVAL_SRC, 20)
@@ -178,23 +180,25 @@ def fetch_multi_day(ticker, min_candles=600):
     offset = 0
     while offset < max_days:
         till_day = today - datetime.timedelta(days=offset)
-        from_day = till_day - datetime.timedelta(days=chunk_days)
+        from_day = today - datetime.timedelta(days=offset + chunk_days)
         offset += chunk_days
-        df = fetch_candles_range(
-            ticker,
-            from_day.strftime("%Y-%m-%d"),
-            (till_day + datetime.timedelta(days=1)).strftime("%Y-%m-%d"),
-        )
+        df = fetch_candles_range(ticker, from_day.strftime("%Y-%m-%d"),
+                                 till_day.strftime("%Y-%m-%d"))
         if df is not None and len(df):
-            dfs.append(df)
-            print(f"    {from_day}..{till_day}: {len(df)} candles", file=sys.stderr)
-        total = sum(len(d) for d in dfs)
-        if total >= min_candles:
+            # учитываются только новые свечи: перекрытие окон и повторы API
+            # не должны досрочно останавливать сбор
+            new_mask = ~df["begin"].isin(seen)
+            if new_mask.any():
+                df = df[new_mask]
+                dfs.append(df)
+                seen.update(df["begin"])
+                print(f"    {from_day}..{till_day}: {len(df)} candles", file=sys.stderr)
+        if len(seen) >= min_candles:
             break
     if not dfs:
         return None
     combined = pd.concat(dfs, ignore_index=True)
-    combined = combined.drop_duplicates(subset=["begin"]).sort_values("begin").reset_index(drop=True)
+    combined = combined.sort_values("begin").reset_index(drop=True)
     return combined
 
 
@@ -217,19 +221,6 @@ def resample_ohlcv(df_src, rule):
     df_out = df_out.rename(columns={"index": "begin"})
     df_out["begin"] = pd.to_datetime(df_out["begin"])
     return df_out
-
-
-def calc_time_stamps(ts_series):
-    """Extract time features for Kronos: minute, hour, weekday, day, month."""
-    ts = pd.to_datetime(ts_series)
-    df = pd.DataFrame({
-        "minute": ts.dt.minute,
-        "hour": ts.dt.hour,
-        "weekday": ts.dt.weekday,
-        "day": ts.dt.day,
-        "month": ts.dt.month,
-    })
-    return df
 
 
 def generate_future_timestamps(last_ts, pred_len, freq):
@@ -346,8 +337,9 @@ if HAS_CHART:
                       color="white", fontsize=13, pad=12)
         ax1.set_ylabel("Price (RUB)", color="#8899aa")
         ax2.set_ylabel("Volume", color="#8899aa")
-        ax1.legend(loc="upper left", facecolor="#1a1a2e", edgecolor="none",
-                   labelcolor="white")
+        if pred_df is not None and len(pred_df) > 0:
+            ax1.legend(loc="upper left", facecolor="#1a1a2e", edgecolor="none",
+                       labelcolor="white")
 
         # Time axis
         for ax in [ax1, ax2]:

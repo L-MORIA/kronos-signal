@@ -30,7 +30,8 @@ def add_code_block(doc, text):
     shd.set(qn('w:val'), 'clear')
     run._element.get_or_add_rPr().append(shd)
 
-def md_to_docx(md_text):
+def md_to_docx(md_text, out_path=None):
+    """Конвертировать markdown в docx. out_path=None -> references/trader-guide.docx."""
     doc = Document()
 
     # Default font
@@ -67,10 +68,15 @@ def md_to_docx(md_text):
         header_cells = [c.strip() for c in table_buffer[0].split("|") if c.strip()]
         rows = []
         for line in table_buffer[2:]:
-            if "|" in line and not line.startswith("---"):
-                cells = [c.strip() for c in line.split("|") if c.strip()]
-                if cells:
-                    rows.append(cells)
+            if "|" not in line:
+                continue
+            cells = [c.strip() for c in line.split("|") if c.strip()]
+            if not cells:
+                continue
+            # пропускаем обрывки разделителя |---|---|
+            if all(set(c) <= set("-: ") for c in cells):
+                continue
+            rows.append(cells)
         if not rows:
             table_buffer.clear()
             return
@@ -119,8 +125,8 @@ def md_to_docx(md_text):
         if "|" in line and line.count("|") >= 2:
             # Check if next line is ---| pattern
             if i + 1 < len(lines) and "---" in lines[i + 1]:
-                table_buffer = [line]
-                # Collect all table lines
+                # Collect the whole table starting at this header line
+                table_buffer = []
                 j = i
                 while j < len(lines) and "|" in lines[j]:
                     table_buffer.append(lines[j])
@@ -209,8 +215,9 @@ def md_to_docx(md_text):
                 run = p.add_run(part)
         i += 1
 
-    doc.save(DOCX_PATH)
-    return DOCX_PATH
+    out_path = Path(out_path) if out_path is not None else DOCX_PATH
+    doc.save(out_path)
+    return out_path
 
 # ── Main ────────────────────────────────────────────────────────────
 if __name__ == "__main__":
