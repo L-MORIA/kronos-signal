@@ -4,6 +4,7 @@
 import sys
 import os
 import json
+import re
 import yaml
 import requests
 import datetime
@@ -45,7 +46,7 @@ with open(CFG_PATH, "r", encoding="utf-8") as f:
 
 TICKERS = CFG["tickers"]
 INTERVAL_SRC = CFG.get("interval", 1)       # 1 = 1 минута из MOEX
-RESAMPLE_TO = CFG.get("resample_to", 5)     # агрегируем в 5 мин
+RESAMPLE_TO = CFG.get("resample_to", 5)     # агрегируем в N-минутные свечи
 LOOKBACK = CFG.get("lookback_candles", 200)
 PRED_LEN = CFG.get("pred_len", 100)
 THRESHOLD = CFG.get("threshold_pct", 2.0)
@@ -69,6 +70,12 @@ TEMPERATURE = CFG.get("temperature", 1.0)
 TOP_K = CFG.get("top_k", 0)
 TOP_P = CFG.get("top_p", 0.9)
 
+# Target timeframe as a pandas resample rule, e.g. "5min" or "60min".
+# All pipeline stages (resample / gap fill / future timestamps) must use it,
+# otherwise the hourly config silently degrades into 5-minute candles.
+RULE = f"{RESAMPLE_TO}min"
+TF_LABEL = f"{RESAMPLE_TO}-min" if RESAMPLE_TO < 60 else "1h"
+
 # Apply --ticker override
 if SINGLE_TICKER:
     TICKERS = [SINGLE_TICKER]
@@ -85,61 +92,95 @@ MOEX_BASE = "https://iss.moex.com/iss/engines/stock/markets/shares"
 
 # ── Tools ─────────────────────────────────────────────────────────────
 
+_TICKER_RE = re.compile(r"^[A-Za-z0-9.\-]{1,20}$")
+
+
 def moex_url(ticker):
+    if not _TICKER_RE.match(ticker):
+        raise ValueError(f"Invalid ticker: {ticker!r}")
     board = BOARDS.get(ticker, "TQBR")
     return f"{MOEX_BASE}/boards/{board}/securities/{ticker}/candles.json"
 
 
-def fetch_day_candles(ticker, date_str):
-    """Fetch up to 500 1-min candles for a given date."""
+def _parse_candles(payload):
+    """MOEX ISS candles payload -> DataFrame(begin, open, high, low, close, volume)."""
+    block = payload["candles"]
+    cols = block["columns"]
+    df = pd.DataFrame(block["data"], columns=cols)
+    df = df.rename(columns={
+        "OPEN": "open", "CLOSE": "close", "HIGH": "high",
+        "LOW": "low", "VOLUME": "volume", "BEGIN": "begin"
+    })
+    df["begin"] = pd.to_datetime(df["begin"])
+    return df[["begin", "open", "high", "low", "close", "volume"]]
+
+
+def fetch_candles_range(ticker, date_from, date_till, max_pages=40):
+    """Fetch all candles for [date_from, date_till) with pagination via `start`.
+
+    MOEX ISS caps one response at 500 rows, so a single limit=500 request
+    silently truncates the tail of a trading day.
+    """
     url = moex_url(ticker)
-    params = {"interval": INTERVAL_SRC, "limit": 500, "from": date_str}
-    try:
-        r = requests.get(url, params=params, timeout=10)
-        r.raise_for_status()
-        data = r.json()["candles"]["data"]
+    dfs = []
+    start = 0
+    for _ in range(max_pages):
+        params = {"interval": INTERVAL_SRC, "limit": 500,
+                  "from": date_from, "till": date_till, "start": start}
+        try:
+            r = requests.get(url, params=params, timeout=10)
+            r.raise_for_status()
+            payload = r.json()
+        except Exception as e:
+            print(f"  ⚠ {ticker} {date_from}: {e}", file=sys.stderr)
+            break
+        data = payload["candles"]["data"]
         if not data:
-            return None
-        cols = r.json()["candles"]["columns"]
-        # cols: open, close, high, low, value, volume, begin, end
-        df = pd.DataFrame(data, columns=cols)
-        df = df.rename(columns={
-            "OPEN": "open", "CLOSE": "close", "HIGH": "high",
-            "LOW": "low", "VOLUME": "volume", "BEGIN": "begin"
-        })
-        df["begin"] = pd.to_datetime(df["begin"])
-        df = df.sort_values("begin").reset_index(drop=True)
-        return df[["begin", "open", "high", "low", "close", "volume"]]
-    except Exception as e:
-        print(f"  ⚠ {ticker} {date_str}: {e}", file=sys.stderr)
+            break
+        dfs.append(_parse_candles(payload))
+        if len(data) < 500:
+            break
+        start += len(data)
+    if not dfs:
         return None
+    df = pd.concat(dfs, ignore_index=True)
+    return df.sort_values("begin").reset_index(drop=True)
+
+
+def fetch_day_candles(ticker, date_str):
+    """Fetch all candles for a given date (paginated)."""
+    till = (datetime.date.fromisoformat(date_str)
+            + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+    return fetch_candles_range(ticker, date_str, till)
+
+
+# candles per trading day per ISS interval (rough, for scan-window sizing)
+_CANDLES_PER_DAY = {1: 1000, 10: 100, 60: 18}
+# calendar days worth of candles per backward chunk, per interval
+_CHUNK_DAYS = {1: 1, 10: 2, 60: 7, 24: 60, 7: 400, 31: 1200}
 
 
 def fetch_multi_day(ticker, min_candles=600):
-    """Fetch 1-min candles by iterating dates with from+till."""
+    """Fetch candles backwards from today until min_candles collected."""
     dfs = []
     today = datetime.date.today()
-    for offset in range(14):
-        day = today - datetime.timedelta(days=offset)
-        day_str = day.strftime("%Y-%m-%d")
-        next_day = (day + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
-        # from=day, till=next_day — получаем только свечи за этот день
-        url = moex_url(ticker)
-        params = {"interval": INTERVAL_SRC, "limit": 500, 
-                   "from": day_str, "till": next_day}
-        try:
-            r = requests.get(url, params=params, timeout=10)
-            data = r.json()["candles"]["data"]
-            if data:
-                cols = r.json()["candles"]["columns"]
-                df = pd.DataFrame(data, columns=cols)
-                df = df.rename(columns={"OPEN": "open", "CLOSE": "close",
-                    "HIGH": "high", "LOW": "low", "VOLUME": "volume", "BEGIN": "begin"})
-                df["begin"] = pd.to_datetime(df["begin"])
-                dfs.append(df)
-                print(f"    {day_str}: {len(df)} candles", file=sys.stderr)
-        except Exception as e:
-            pass  # empty day
+    chunk_days = _CHUNK_DAYS.get(INTERVAL_SRC, 1)
+    per_day = _CANDLES_PER_DAY.get(INTERVAL_SRC, 20)
+    max_days = max(14, int(min_candles / per_day * 2.5) + 14)
+
+    offset = 0
+    while offset < max_days:
+        till_day = today - datetime.timedelta(days=offset)
+        from_day = till_day - datetime.timedelta(days=chunk_days)
+        offset += chunk_days
+        df = fetch_candles_range(
+            ticker,
+            from_day.strftime("%Y-%m-%d"),
+            (till_day + datetime.timedelta(days=1)).strftime("%Y-%m-%d"),
+        )
+        if df is not None and len(df):
+            dfs.append(df)
+            print(f"    {from_day}..{till_day}: {len(df)} candles", file=sys.stderr)
         total = sum(len(d) for d in dfs)
         if total >= min_candles:
             break
@@ -150,11 +191,13 @@ def fetch_multi_day(ticker, min_candles=600):
     return combined
 
 
-def resample_to_5min(df_1min):
-    """Aggregate 1-min OHLCV to 5-min candles."""
-    if df_1min is None or len(df_1min) < 2:
+def resample_ohlcv(df_src, rule):
+    """Aggregate source OHLCV candles to the target timeframe `rule` (e.g. '5min')."""
+    if df_src is None or len(df_src) < 2:
         return None
-    df = df_1min.set_index("begin")
+    if rule == "1min":  # no aggregation
+        return df_src.copy()
+    df = df_src.set_index("begin")
     ohlc = {
         "open": "first",
         "high": "max",
@@ -162,11 +205,11 @@ def resample_to_5min(df_1min):
         "close": "last",
         "volume": "sum",
     }
-    df5 = df.resample("5min", closed="left", label="left").agg(ohlc)
-    df5 = df5.dropna(subset=["open"]).reset_index()
-    df5 = df5.rename(columns={"index": "begin"})
-    df5["begin"] = pd.to_datetime(df5["begin"])
-    return df5
+    df_out = df.resample(rule, closed="left", label="left").agg(ohlc)
+    df_out = df_out.dropna(subset=["open"]).reset_index()
+    df_out = df_out.rename(columns={"index": "begin"})
+    df_out["begin"] = pd.to_datetime(df_out["begin"])
+    return df_out
 
 
 def calc_time_stamps(ts_series):
@@ -182,7 +225,7 @@ def calc_time_stamps(ts_series):
     return df
 
 
-def generate_future_timestamps(last_ts, pred_len, freq="5min"):
+def generate_future_timestamps(last_ts, pred_len, freq):
     """Generate future timestamps for prediction horizon."""
     ts = pd.to_datetime(last_ts)
     future = pd.date_range(start=ts, periods=pred_len + 1, freq=freq)[1:]
@@ -207,14 +250,14 @@ def load_model():
     return predictor
 
 
-def fill_gaps_5min(df_5min):
+def fill_gaps(df_tf, rule):
     """Fill gaps (non-trading hours) by carrying last close forward."""
-    if df_5min is None or len(df_5min) < 2:
-        return df_5min
+    if df_tf is None or len(df_tf) < 2:
+        return df_tf
     full_range = pd.date_range(
-        df_5min["begin"].min(), df_5min["begin"].max(), freq="5min"
+        df_tf["begin"].min(), df_tf["begin"].max(), freq=rule
     )
-    df = df_5min.set_index("begin").reindex(full_range)
+    df = df_tf.set_index("begin").reindex(full_range)
     # Forward-fill price columns
     for col in ["open", "high", "low", "close"]:
         df[col] = df[col].ffill()
@@ -231,7 +274,7 @@ if HAS_CHART:
     import matplotlib.pyplot as plt
     import matplotlib.dates as mdates
 
-    def plot_chart(ticker, df_5min, pred_df, save_path):
+    def plot_chart(ticker, df_tf, pred_df, save_path, rule=RULE, tf_label=TF_LABEL):
         """Draw OHLCV + forecast chart, save as PNG."""
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 7),
                                         gridspec_kw={"height_ratios": [3, 1]})
@@ -239,33 +282,32 @@ if HAS_CHART:
         for ax in [ax1, ax2]:
             ax.set_facecolor("#16213e")
 
-        times = pd.to_datetime(df_5min["begin"])
-        closes = df_5min["close"].values
-        opens = df_5min["open"].values
-        highs = df_5min["high"].values
-        lows = df_5min["low"].values
-        volumes = df_5min["volume"].values
+        times = pd.to_datetime(df_tf["begin"])
+        closes = df_tf["close"].values
+        opens = df_tf["open"].values
+        highs = df_tf["high"].values
+        lows = df_tf["low"].values
+        volumes = df_tf["volume"].values
 
         # Price line
         ax1.plot(times, closes, color="#00d2ff", linewidth=1.2, alpha=0.8)
         ax1.fill_between(times, closes, closes.min(), alpha=0.06, color="#00d2ff")
 
-        # Candlestick bodies (last 60 candles for clarity)
+        # Candlestick bodies (last ~60 candles for clarity)
         viz = max(30, min(60, len(times)))
+        body_w = pd.Timedelta(rule) / 2.5
         for i in range(max(0, len(times) - viz), len(times)):
             t = times[i]
             o, h, l, c = opens[i], highs[i], lows[i], closes[i]
             color = "#00ff88" if c >= o else "#ff4757"
             ax1.plot([t, t], [l, h], color=color, linewidth=0.6, alpha=0.5)
-            body_w = pd.Timedelta("2min")
             ax1.bar(t, abs(c - o) or 0.01, bottom=min(o, c),
                     width=body_w, color=color, alpha=0.8)
 
         # Forecast line (if available)
         if pred_df is not None and len(pred_df) > 0:
-            fcast_times = pd.to_datetime(pred_df.index) if hasattr(pred_df, 'index') else \
-                          pd.date_range(start=times.iloc[-1], periods=len(pred_df)+1, freq="5min")[1:]
-            fcast_close = pred_df["close"].values if "close" in pred_df else pred_df.iloc[:, 3].values
+            fcast_times = pd.to_datetime(pred_df.index)
+            fcast_close = pred_df["close"].values
             ax1.plot(fcast_times, fcast_close, color="#ff6b9d", linewidth=2,
                      linestyle="--", label="Forecast", alpha=0.9)
             ax1.fill_between(fcast_times, fcast_close, fcast_close.min(),
@@ -275,11 +317,11 @@ if HAS_CHART:
                         linestyle=":", alpha=0.5)
 
         # Volume
-        ax2.bar(times, volumes, width=pd.Timedelta("4min"),
+        ax2.bar(times, volumes, width=pd.Timedelta(rule) * 0.8,
                 color="#00d2ff", alpha=0.25)
 
         # Labels
-        ax1.set_title(f"{ticker}  |  5-min Chart  |  {datetime.date.today()}",
+        ax1.set_title(f"{ticker}  |  {tf_label} Chart  |  {datetime.date.today()}",
                       color="white", fontsize=13, pad=12)
         ax1.set_ylabel("Price (RUB)", color="#8899aa")
         ax2.set_ylabel("Volume", color="#8899aa")
@@ -411,41 +453,38 @@ def main():
     for ticker in TICKERS:
         print(f"\n  [{ticker}]", file=sys.stderr)
         print(file=sys.stderr)
-        pass # timer placeholder
 
-        # 1. Fetch 1-min candles
-        df_1min = fetch_multi_day(ticker, min_candles=LOOKBACK + 500)
-        if df_1min is None or len(df_1min) < 100:
+        # 1. Fetch source candles (1-min or 1h, with pagination)
+        df_src = fetch_multi_day(ticker, min_candles=LOOKBACK + 500)
+        if df_src is None or len(df_src) < 100:
             print(f"  ⚠ {ticker}: not enough data, skip", file=sys.stderr)
             results.append((ticker, 0, 0, "NODATA", 0, 0))
             continue
 
-        # 2. Resample to 5-min
-        df_5min = resample_to_5min(df_1min)
-        if df_5min is None or len(df_5min) < 50:
-            print(f"  ⚠ {ticker}: no 5min candles, skip", file=sys.stderr)
+        # 2. Resample to target timeframe
+        df_tf = resample_ohlcv(df_src, RULE)
+        if df_tf is None or len(df_tf) < 50:
+            print(f"  ⚠ {ticker}: no {TF_LABEL} candles, skip", file=sys.stderr)
             results.append((ticker, 0, 0, "NODATA", 0, 0))
             continue
 
         # 3. Fill gaps — non-trading hours
-        df_5min = fill_gaps_5min(df_5min)
+        df_tf = fill_gaps(df_tf, RULE)
 
         # 4. Take last LOOKBACK candles
-        df_5min = df_5min.tail(min(LOOKBACK, len(df_5min))).reset_index(drop=True)
-        n_candles = len(df_5min)
-        last_candle = df_5min.iloc[-1]
+        df_tf = df_tf.tail(min(LOOKBACK, len(df_tf))).reset_index(drop=True)
+        n_candles = len(df_tf)
+        last_candle = df_tf.iloc[-1]
         last_close = last_candle["close"]
         last_ts = last_candle["begin"]
 
         # 5. Use KronosPredictor.predict — handles norm/denorm internally
-        x_ts = pd.Series(df_5min["begin"])
-        y_ts_future = generate_future_timestamps(last_ts, PRED_LEN)
-        pass  # predicting
+        x_ts = pd.Series(df_tf["begin"])
+        y_ts_future = generate_future_timestamps(last_ts, PRED_LEN, RULE)
 
-        # prep timing removed
         try:
             pred_df = predictor.predict(
-                df=df_5min[["open", "high", "low", "close", "volume"]],
+                df=df_tf[["open", "high", "low", "close", "volume"]],
                 x_timestamp=x_ts,
                 y_timestamp=y_ts_future,
                 pred_len=PRED_LEN,
@@ -457,7 +496,6 @@ def main():
             results.append((ticker, last_close, 0, "ERROR", 0, 0))
             continue
 
-        # predict timing removed
         # pred_df columns: open, high, low, close, volume, amount
         pred_close_avg = float(pred_df["close"].mean())
 
@@ -482,7 +520,7 @@ def main():
         # ── Save chart if --chart is set ──
         if HAS_CHART:
             chart_path = os.path.join(CHART_DIR, f"{ticker}-chart.png")
-            plot_chart(ticker, df_5min, pred_df, chart_path)
+            plot_chart(ticker, df_tf, pred_df, chart_path, RULE, TF_LABEL)
 
     # ── Output table ────────────────────────────────────────────────
     header = (

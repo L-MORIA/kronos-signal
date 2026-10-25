@@ -27,6 +27,9 @@ uv pip install -r requirements.txt
 
 # 3. Запустить
 python scripts/run.py
+
+# Тесты (опционально)
+python -m pytest tests/ -q
 ```
 
 ## Ярлыки (Windows)

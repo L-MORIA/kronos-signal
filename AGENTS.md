@@ -75,6 +75,9 @@ python scripts/run.py --config config-hourly.yaml
 
 # Обновить модели с HuggingFace Hub
 python update_models/update_models.py
+
+# Тесты (без сети и загрузки модели)
+python -m pytest tests/ -q
 ```
 
 ## Параметры config.yaml

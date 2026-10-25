@@ -34,7 +34,14 @@ HORIZON = PRED_LEN
 
 FORECAST_DIR = Path("forecasts")
 TIMESFM_DIR = FORECAST_DIR / "timesfm"
-TIMESFM_DIR.mkdir(exist_ok=True)
+TIMESFM_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def fmt_num(v, spec=".2f", width=12):
+    """Format a float for the table; None/NaN -> dash placeholder."""
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return "—".rjust(width)
+    return f"{v:{spec}}".rjust(width)
 
 
 def fetch_hourly(ticker, days=LOOKBACK_DAYS):
@@ -86,6 +93,8 @@ def main():
         last_close = float(close[-1])
 
         # TimesFM wants list-of-lists
+        pred = None
+        pred_series = None
         try:
             forecasts = model.forecast(
                 horizon=HORIZON,
@@ -97,25 +106,29 @@ def main():
             )
             # forecasts: (n_samples, horizon) or (horizon,) depending on version
             if forecasts.ndim == 2:
-                pred = float(np.mean(forecasts, axis=0)[-1])
+                pred_series = forecasts.mean(axis=0)
+                pred = float(pred_series[-1])
             else:
+                pred_series = forecasts
                 pred = float(forecasts[-1])
         except Exception as e:
             print(f"  ❌ inference failed: {e}")
-            pred = None
 
         # Load Kronos hourly forecast for comparison
         kronos_files = sorted(FORECAST_DIR.glob(f"*hourly_{ticker}.json"),
                              reverse=True)
         kronos_last = kronos_forecast = kronos_signal = None
         if kronos_files:
-            with open(kronos_files[0]) as f:
-                kj = json.load(f)
-            kronos_last = kj.get("last_close")
-            kronos_forecast = kj.get("forecast_close")
-            kronos_signal = kj.get("signal")
+            try:
+                with open(kronos_files[0], encoding="utf-8") as f:
+                    kj = json.load(f)
+                kronos_last = kj.get("last_close")
+                kronos_forecast = kj.get("forecast_close")
+                kronos_signal = kj.get("signal")
+            except (OSError, json.JSONDecodeError) as e:
+                print(f"  ⚠️ kronos forecast unreadable: {e}")
 
-        chg = ((pred - last_close) / last_close * 100) if pred else None
+        chg = ((pred - last_close) / last_close * 100) if pred is not None else None
 
         rows.append({
             "ticker": ticker,
@@ -132,19 +145,21 @@ def main():
         out = {
             "ticker": ticker,
             "last_close": last_close,
-            "pred_prices": [round(float(p), 4) for p in
-                            forecasts[-1].tolist()] if forecasts.ndim == 2
-                           else [round(float(p), 4) for p in forecasts.tolist()],
+            "pred_prices": [round(float(p), 4) for p in pred_series.tolist()]
+                           if pred_series is not None else [],
             "forecast_close": pred,
             "chg_pct": round(chg, 2) if chg is not None else None,
             "source": "timesfm-2.5-200m",
             "horizon": HORIZON,
             "timestamp": ts,
         }
-        with open(TIMESFM_DIR / f"{ts}_timesfm_{ticker}.json", "w") as f:
+        with open(TIMESFM_DIR / f"{ts}_timesfm_{ticker}.json", "w", encoding="utf-8") as f:
             json.dump(out, f, indent=2, ensure_ascii=False)
-        print(f"  ✅ {ticker}: last={last_close:.2f} → timesfm={pred:.2f} "
-              f"(chg={chg:+.2f}%)" if chg else f"  ⚠️ {ticker}: pred=NA")
+        if pred is not None:
+            print(f"  ✅ {ticker}: last={last_close:.2f} → timesfm={pred:.2f} "
+                  f"(chg={chg:+.2f}%)")
+        else:
+            print(f"  ⚠️ {ticker}: pred=NA")
 
     # Print comparison table
     print("\n" + "=" * 90)
@@ -159,14 +174,16 @@ def main():
         diff = None
         if kf and tf:
             diff = round((tf - kf) / kf * 100, 2)
+        chg_txt = f"{chg:+.2f}%" if chg is not None else "—"
+        diff_txt = f"{diff:+.2f}%" if diff is not None else "—"
         print(f"{r['ticker']:<8} "
-              f"{kl:>12.2f} {kf:>12.2f} {sig:>8} "
-              f"{tl:>12.2f} {tf:>12.2f} {f'{chg:+.2f}%':>8}  "
-              f"{f'{diff:+.2f}%' if diff else '—'}")
+              f"{fmt_num(kl)} {fmt_num(kf)} {sig:>8} "
+              f"{fmt_num(tl)} {fmt_num(tf)} {chg_txt:>8}  "
+              f"{diff_txt}")
     print("=" * 90)
 
     # JSON summary
-    with open(TIMESFM_DIR / "comparison_summary.json", "w") as f:
+    with open(TIMESFM_DIR / "comparison_summary.json", "w", encoding="utf-8") as f:
         json.dump(rows, f, indent=2, ensure_ascii=False)
     print(f"\n✅ Saved {len(rows)} forecasts + summary to {TIMESFM_DIR}/")
 

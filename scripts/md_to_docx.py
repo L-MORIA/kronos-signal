@@ -1,15 +1,18 @@
 """Конвертация trader-guide.md → trader-guide.docx
-Запуск: python C:\kronos-signal\scripts\md_to_docx.py
+Запуск: python scripts/md_to_docx.py (из корня проекта)
 """
 import re
 import os
+from pathlib import Path
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
 
-MD_PATH = "C:/kronos-signal/references/trader-guide.md"
-DOCX_PATH = "C:/kronos-signal/references/trader-guide.docx"
+# Корень проекта — portable, без absolute-путей
+BASE_DIR = Path(__file__).resolve().parent.parent
+MD_PATH = BASE_DIR / "references" / "trader-guide.md"
+DOCX_PATH = BASE_DIR / "references" / "trader-guide.docx"
 
 def add_code_block(doc, text):
     """Код — моноширинный, серый фон (через стиль)."""

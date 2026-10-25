@@ -1,17 +1,17 @@
 """Проверка и обновление моделей Kronos с HuggingFace Hub.
 
-Запуск: python C:/kronos-models/update_models.py
+Запуск: python update_models/update_models.py (из корня проекта)
 Сравнивает локальную версию с последней на HF Hub.
-Если есть новая - скачивает в C:/kronos-models/.
+Если есть новая - скачивает в models/.
 """
-import os
 import json
 import requests
-import hashlib
 from pathlib import Path
 
-MODELS_DIR = Path("C:/kronos-signal/models").resolve()
-VERSION_FILE = Path("C:/kronos-signal/.version")
+# Корень проекта — на уровень выше этого файла (portable, без absolute-путей)
+BASE_DIR = Path(__file__).resolve().parent.parent
+MODELS_DIR = BASE_DIR / "models"
+VERSION_FILE = BASE_DIR / ".version"
 
 REPOS = {
     "Kronos-mini": "NeoQuasar/Kronos-mini",
@@ -28,7 +28,8 @@ def get_local_version():
         return None
 
 def save_local_version(date_str):
-    VERSION_FILE.write_text(f"{date_str}\n")
+    VERSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+    VERSION_FILE.write_text(f"{date_str}\n", encoding="utf-8")
 
 def get_remote_info(repo_id):
     """Получить lastModified дату модели с HF Hub."""

@@ -35,7 +35,7 @@ def find_base() -> pathlib.Path:
 
 
 BASE = find_base()
-BAT_FILES = ["launch.bat", "launch2.bat"]
+BAT_FILES = ["launch.bat", "launch2.bat", "update_models/update_models.bat"]
 CONFIG_FILES = ["config.yaml", "config-hourly.yaml"]
 
 

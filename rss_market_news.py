@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""RSS сборщик новостей по тикерам MOEX. 
+"""RSS сборщик новостей по тикерам MOEX.
 Подключается к 4 RSS-фидам, фильтрует по тикеру, сохраняет seen_urls.
 
 Usage:
@@ -8,10 +8,11 @@ Usage:
   python rss_market_news.py --json
 """
 import argparse, datetime, json, os, re, sys
+from email.utils import parsedate_to_datetime
 from xml.etree import ElementTree
 from urllib.request import Request, urlopen
 
-CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "news_cache")
+CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "news_cache")
 os.makedirs(CACHE_DIR, exist_ok=True)
 SEEN_FILE = os.path.join(CACHE_DIR, "seen_urls.txt")
 
@@ -33,16 +34,26 @@ TICKER_KW = {
 
 def load_seen():
     if not os.path.isfile(SEEN_FILE): return set()
-    with open(SEEN_FILE) as f: return {l.strip() for l in f if l.strip()}
+    with open(SEEN_FILE, encoding="utf-8") as f:
+        return {l.strip() for l in f if l.strip()}
 
 def save_seen(urls):
-    with open(SEEN_FILE, "a") as f:
+    with open(SEEN_FILE, "a", encoding="utf-8") as f:
         for u in urls: f.write(u + "\n")
 
 def fetch(url):
+    if not url.lower().startswith("https://"):
+        print(f"  ⚠️  {url}: разрешён только https", file=sys.stderr)
+        return []
     try:
         resp = urlopen(Request(url, headers={"User-Agent": "Mozilla/5.0"}), timeout=15)
-        root = ElementTree.fromstring(resp.read())
+        raw = resp.read()
+        # Отсекаем DTD/ENTITY — защита от XML-бомб (billion laughs / XXE)
+        head = raw[:2048]
+        if b"<!DOCTYPE" in head or b"<!ENTITY" in head:
+            print(f"  ⚠️  {url}: DTD в XML отклонён", file=sys.stderr)
+            return []
+        root = ElementTree.fromstring(raw)
         items = []
         for item in root.iter("item"):
             items.append({
@@ -59,14 +70,19 @@ def fetch(url):
 def match(text, tickers):
     t = text.lower()
     for ticker in tickers:
-        for kw in TICKER_KW[ticker]:
+        for kw in TICKER_KW.get(ticker, []):
             if kw in t: return ticker
     return None
 
 def parse_dt(s):
+    """RFC-822 pubDate -> naive local datetime (datetime.min если не парсится)."""
     try:
-        return datetime.datetime.strptime(s.rsplit(" ",1)[0].strip(","), "%a, %d %b %Y %H:%M:%S")
-    except: return datetime.datetime.min
+        dt = parsedate_to_datetime(s)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone().replace(tzinfo=None)
+        return dt
+    except (TypeError, ValueError):
+        return datetime.datetime.min
 
 def main():
     ap = argparse.ArgumentParser()

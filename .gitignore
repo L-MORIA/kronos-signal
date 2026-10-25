@@ -12,6 +12,9 @@ log-hourly.txt
 # Model cache on HF Hub
 ~/.cache/huggingface/
 
+# RSS news cache (личная история просмотра)
+news_cache/
+
 # Version tracking (дата последнего обновления модели)
 .version
 
